@@ -1,0 +1,20 @@
+.eligibility-badge {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.eligibility-badge.eligible {
+  background-color: #e8f8f5;
+  color: var(--success);
+  border: 1px solid var(--success);
+}
+
+.eligibility-badge.ineligible {
+  background-color: #fef5e7;
+  color: var(--warning);
+  border: 1px solid var(--warning);
+}

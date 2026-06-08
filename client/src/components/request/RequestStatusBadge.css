@@ -1,0 +1,20 @@
+.request-status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge-grey { background-color: #f2f3f4; color: #7f8c8d; }
+.badge-blue { background-color: #ebf5fb; color: #2980b9; }
+.badge-green { background-color: #e8f8f5; color: #27ae60; }
+.badge-orange { background-color: #fef5e7; color: #f39c12; }
+.badge-red { background-color: #fdedec; color: #c0392b; }
+.badge-grey-strike { 
+  background-color: #f2f3f4; 
+  color: #7f8c8d; 
+  text-decoration: line-through; 
+}
+.badge-default { background-color: #f8f9fa; color: #2c3e50; }
