@@ -22,10 +22,10 @@ const seed = async () => {
   try {
     // Connect to MongoDB
     await mongoose.connect(process.env.MONGO_URI);
-    console.log('✅ Connected to MongoDB');
+    console.log('Connected to MongoDB');
 
     // Clear all collections
-    console.log('🗑️  Clearing all collections...');
+    console.log('Clearing all collections...');
     await Promise.all([
       User.deleteMany({}),
       Donor.deleteMany({}),
@@ -34,7 +34,7 @@ const seed = async () => {
       Request.deleteMany({}),
       SurveyResponse.deleteMany({})
     ]);
-    console.log('✅ All collections cleared');
+    console.log('All collections cleared');
 
     // Use plain text passwords (the User model pre-save hook will hash them)
     const adminPassword = 'Admin@123';
@@ -44,7 +44,7 @@ const seed = async () => {
     // ═══════════════════════════════════════════════════════════
     // 1. ADMIN ACCOUNT
     // ═══════════════════════════════════════════════════════════
-    console.log('👤 Creating admin account...');
+    console.log('Creating admin account...');
     const adminUser = await User.create({
       email: 'admin@bbms.com',
       password: adminPassword,
@@ -55,7 +55,7 @@ const seed = async () => {
     // ═══════════════════════════════════════════════════════════
     // 2. DONORS (5 donors, all approved)
     // ═══════════════════════════════════════════════════════════
-    console.log('🩸 Creating donor accounts...');
+    console.log('Creating donor accounts...');
 
     const now = new Date();
 
@@ -190,7 +190,7 @@ const seed = async () => {
     // ═══════════════════════════════════════════════════════════
     // 3. HOSPITALS (3 hospitals, all approved)
     // ═══════════════════════════════════════════════════════════
-    console.log('🏥 Creating hospital accounts...');
+    console.log('Creating hospital accounts...');
 
     const hospitalData = [
       {
@@ -257,7 +257,7 @@ const seed = async () => {
     // ═══════════════════════════════════════════════════════════
     // 4. BLOOD UNITS (20 units)
     // ═══════════════════════════════════════════════════════════
-    console.log('🩸 Creating blood units...');
+    console.log('Creating blood units...');
 
     const year = now.getFullYear();
     let unitCounter = 0;
@@ -378,7 +378,7 @@ const seed = async () => {
     // ═══════════════════════════════════════════════════════════
     // 5. BLOOD REQUESTS (5 requests, mix of statuses)
     // ═══════════════════════════════════════════════════════════
-    console.log('📋 Creating blood requests...');
+    console.log('Creating blood requests...');
 
     // Request 1: Fulfilled (from inventory) — FMC Lafia
     const request1 = await Request.create({
@@ -450,7 +450,7 @@ const seed = async () => {
     // ═══════════════════════════════════════════════════════════
     // 6. SUS SURVEY RESPONSES (2 surveys)
     // ═══════════════════════════════════════════════════════════
-    console.log('📊 Creating survey responses...');
+    console.log('Creating survey responses...');
 
     // Donor survey (Chinedu) — generally positive
     const donorResponses = [4, 2, 5, 1, 4, 2, 5, 1, 4, 2];
@@ -478,7 +478,7 @@ const seed = async () => {
     console.log('\n' + '═'.repeat(65));
     console.log('  BBMS DATABASE SEEDED SUCCESSFULLY');
     console.log('═'.repeat(65));
-    console.log('\n📋 SUMMARY:');
+    console.log('\nSUMMARY:');
     console.log(`  Users:            ${1 + 5 + 3} (1 admin, 5 donors, 3 hospitals)`);
     console.log(`  Donors:           ${donors.length}`);
     console.log(`  Hospitals:        ${hospitals.length}`);
@@ -486,7 +486,7 @@ const seed = async () => {
     console.log(`  Requests:         5`);
     console.log(`  Survey Responses: 2`);
 
-    console.log('\n🔑 TEST ACCOUNTS:');
+    console.log('\nTEST ACCOUNTS:');
     console.log('─'.repeat(65));
     console.log(`  ${'Role'.padEnd(10)} ${'Email'.padEnd(35)} ${'Password'.padEnd(15)}`);
     console.log('─'.repeat(65));
@@ -501,22 +501,22 @@ const seed = async () => {
     console.log(`  ${'Hospital'.padEnd(10)} ${'info@lafiabloodbank.com'.padEnd(35)} ${'Hospital@123'.padEnd(15)}`);
     console.log('─'.repeat(65));
 
-    console.log('\n🩸 BLOOD UNITS BREAKDOWN:');
+    console.log('\nBLOOD UNITS BREAKDOWN:');
     console.log(`  Available: 13  |  Reserved: 3  |  Delivered: 2  |  Expired: 2`);
-    console.log(`  ⚠️  1 unit expiring within 2 days (will trigger expiry alert)`);
+    console.log(`  WARNING:  1 unit expiring within 2 days (will trigger expiry alert)`);
 
-    console.log('\n📋 REQUEST STATUS BREAKDOWN:');
+    console.log('\nREQUEST STATUS BREAKDOWN:');
     console.log(`  Fulfilled: 2  |  SOS Dispatched: 1  |  Pending Donation: 1  |  Submitted: 1`);
 
-    console.log('\n📊 SUS SCORES:');
+    console.log('\nSUS SCORES:');
     console.log(`  Donor (Chinedu):  ${donorSusScore}`);
     console.log(`  Hospital (FMC):   ${hospitalSusScore}`);
 
-    console.log('\n✅ Seed complete! You can now run: npm run dev\n');
+    console.log('\nSeed complete! You can now run: npm run dev\n');
 
     process.exit(0);
   } catch (error) {
-    console.error('❌ Seed error:', error);
+    console.error('Seed error:', error);
     process.exit(1);
   }
 };

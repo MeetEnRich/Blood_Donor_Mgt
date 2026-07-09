@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate, Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import './Login.css';
 
@@ -8,8 +8,14 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  
+  const { login, user } = useAuth();
   const navigate = useNavigate();
+
+  // If user is already logged in, redirect them to their respective dashboard
+  if (user) {
+    return <Navigate to={`/${user.role}/dashboard`} replace />;
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -60,6 +66,15 @@ const Login = () => {
         <p className="text-center mt-3">
           Don't have an account? <Link to="/register">Register here</Link>
         </p>
+        
+        <div style={{ marginTop: '2rem', padding: '1rem', backgroundColor: '#f5f6fa', border: '1px solid #dfe6e9', borderRadius: '4px', fontSize: '0.85rem' }}>
+          <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: '#2c3e50' }}>Development Test Credentials</h4>
+          <ul style={{ listStyleType: 'none', paddingLeft: 0, margin: 0, color: '#7f8c8d' }}>
+            <li style={{ marginBottom: '0.25rem' }}><strong>Admin:</strong> admin@bbms.com / Admin@123</li>
+            <li style={{ marginBottom: '0.25rem' }}><strong>Hospital:</strong> info@fmclafia.com / Hospital@123</li>
+            <li><strong>Donor:</strong> chinedu.okafor@email.com / Password@123</li>
+          </ul>
+        </div>
       </div>
     </div>
   );

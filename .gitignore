@@ -122,3 +122,7 @@ Thumbs.db
 
 # Vite Build Output
 client/dist/
+
+# Project Documentation
+BBMS_System_Spec.md
+Ecpo_Samuel_Barnabas_revised_v2.md

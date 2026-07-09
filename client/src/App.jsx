@@ -9,13 +9,28 @@ import './styles/global.css';
 
 const AppContent = () => {
   const { user } = useAuth();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(true);
+
+  const toggleSidebar = () => setIsSidebarCollapsed(prev => !prev);
   
   return (
-    <div className="app-container">
-      <Navbar />
-      <div className={user ? 'main-layout' : ''}>
-        {user && <Sidebar />}
-        <main className={user ? 'content-area' : ''} style={{ width: '100%', paddingTop: user ? '0' : '60px' }}>
+    <div className="app-container" style={{ display: 'flex', minHeight: '100vh' }}>
+      {user && <Sidebar isCollapsed={isSidebarCollapsed} />}
+      
+      <div 
+        className={user ? 'main-content-wrapper' : ''} 
+        style={{ 
+          flex: 1, 
+          display: 'flex', 
+          flexDirection: 'column',
+          marginLeft: user ? (isSidebarCollapsed ? '64px' : '240px') : '0',
+          transition: 'margin-left 0.3s ease',
+          width: '100%'
+        }}
+      >
+        {user && <Navbar toggleSidebar={toggleSidebar} isSidebarCollapsed={isSidebarCollapsed} />}
+        
+        <main className={user ? 'content-area' : ''} style={{ flex: 1, padding: user ? '2.5rem' : '0' }}>
           <AppRoutes />
         </main>
       </div>

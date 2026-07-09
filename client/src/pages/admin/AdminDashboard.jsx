@@ -7,7 +7,7 @@ import { formatDate } from '../../utils/formatDate';
 import './AdminDashboard.css';
 
 const AdminDashboard = () => {
-  const [stats, setStats] = useState({ donors: 0, hospitals: 0, units: 0, requestsToday: 0, fulfilledToday: 0 });
+  const [stats, setStats] = useState({ totalDonors: 0, totalHospitals: 0, availableUnits: 0, requestsToday: 0, fulfilledToday: 0 });
   const [expiryCount, setExpiryCount] = useState(0);
   const [recentRequests, setRecentRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,7 +16,7 @@ const AdminDashboard = () => {
     const fetchDashboardData = async () => {
       try {
         const [statsRes, expiryRes, reqRes] = await Promise.all([
-          api.get('/admin/stats').catch(() => ({ data: { donors: 120, hospitals: 15, units: 450, requestsToday: 5, fulfilledToday: 3 } })),
+          api.get('/admin/stats').catch(() => ({ data: { totalDonors: 120, totalHospitals: 15, availableUnits: 450, requestsToday: 5, fulfilledToday: 3 } })),
           api.get('/inventory/expiry-alerts').catch(() => ({ data: { count: 2 } })),
           api.get('/requests?limit=10').catch(() => ({ data: { requests: [] } }))
         ]);
@@ -43,9 +43,9 @@ const AdminDashboard = () => {
       <ExpiryAlert count={expiryCount} />
       
       <div className="grid grid-cols-4 gap-3" style={{ marginBottom: '2rem' }}>
-        <StatCard label="Total Donors" value={stats.donors} />
-        <StatCard label="Total Hospitals" value={stats.hospitals} colorAccent="var(--secondary)" />
-        <StatCard label="Available Units" value={stats.units} colorAccent="var(--success)" />
+        <StatCard label="Total Donors" value={stats.totalDonors} />
+        <StatCard label="Total Hospitals" value={stats.totalHospitals} colorAccent="var(--secondary)" />
+        <StatCard label="Available Units" value={stats.availableUnits} colorAccent="var(--success)" />
         <StatCard label="Reqs Today / Fulfilled" value={`${stats.requestsToday} / ${stats.fulfilledToday}`} colorAccent="var(--warning)" />
       </div>
 

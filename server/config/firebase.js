@@ -9,15 +9,15 @@ const initFirebase = () => {
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 
   if (!projectId || !privateKey || !clientEmail) {
-    console.warn('⚠️  Firebase credentials not configured. Push notifications will be logged to console instead.');
+    console.warn('WARNING: Firebase credentials not configured. Push notifications will be logged to console instead.');
     // Return mock messaging object
     messaging = {
       send: async (message) => {
-        console.warn('📱 [MOCK FCM] Would send notification:', JSON.stringify(message, null, 2));
+        console.warn('[MOCK FCM] Would send notification:', JSON.stringify(message, null, 2));
         return 'mock-message-id';
       },
       sendEachForMulticast: async (message) => {
-        console.warn('📱 [MOCK FCM] Would send multicast notification:', JSON.stringify(message, null, 2));
+        console.warn('[MOCK FCM] Would send multicast notification:', JSON.stringify(message, null, 2));
         return {
           successCount: message.tokens ? message.tokens.length : 0,
           failureCount: 0,
@@ -37,16 +37,16 @@ const initFirebase = () => {
       })
     });
     messaging = admin.messaging();
-    console.log('✅ Firebase Admin SDK initialized successfully');
+    console.log('Firebase Admin SDK initialized successfully');
   } catch (error) {
-    console.warn(`⚠️  Firebase initialization failed: ${error.message}. Using mock fallback.`);
+    console.warn(`WARNING: Firebase initialization failed: ${error.message}. Using mock fallback.`);
     messaging = {
       send: async (message) => {
-        console.warn('📱 [MOCK FCM] Would send notification:', JSON.stringify(message, null, 2));
+        console.warn('[MOCK FCM] Would send notification:', JSON.stringify(message, null, 2));
         return 'mock-message-id';
       },
       sendEachForMulticast: async (message) => {
-        console.warn('📱 [MOCK FCM] Would send multicast notification:', JSON.stringify(message, null, 2));
+        console.warn('[MOCK FCM] Would send multicast notification:', JSON.stringify(message, null, 2));
         return {
           successCount: message.tokens ? message.tokens.length : 0,
           failureCount: 0,

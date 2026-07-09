@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import api from '../../api/axiosInstance';
+import { useAuth } from '../../hooks/useAuth';
 import './Register.css';
 
 const Register = () => {
+  const { user } = useAuth();
   const [role, setRole] = useState('');
   const [formData, setFormData] = useState({
     fullName: '', facilityName: '', facilityType: '', dateOfBirth: '', gender: '', 
@@ -14,6 +16,10 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  if (user) {
+    return <Navigate to={`/${user.role}/dashboard`} replace />;
+  }
 
   const handleRoleSelect = (selectedRole) => setRole(selectedRole);
 
