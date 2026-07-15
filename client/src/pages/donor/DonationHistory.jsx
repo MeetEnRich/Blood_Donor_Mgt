@@ -5,6 +5,8 @@ import { formatDate } from '../../utils/formatDate';
 const DonationHistory = () => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 5;
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -19,6 +21,12 @@ const DonationHistory = () => {
     };
     fetchHistory();
   }, []);
+
+  // Pagination calculations
+  const indexOfLastRow = currentPage * rowsPerPage;
+  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+  const currentRows = history.slice(indexOfFirstRow, indexOfLastRow);
+  const totalPages = Math.ceil(history.length / rowsPerPage);
 
   return (
     <div>
@@ -39,8 +47,8 @@ const DonationHistory = () => {
             <tbody>
               {loading ? (
                 <tr><td colSpan="3" className="text-center">Loading...</td></tr>
-              ) : history.length > 0 ? (
-                history.map((record, idx) => (
+              ) : currentRows.length > 0 ? (
+                currentRows.map((record, idx) => (
                   <tr key={idx}>
                     <td>{formatDate(record.donationDate || record.date)}</td>
                     <td>{record.facilityName || 'System Record'}</td>
@@ -53,6 +61,26 @@ const DonationHistory = () => {
             </tbody>
           </table>
         </div>
+
+        {!loading && totalPages > 1 && (
+          <div className="flex justify-between items-center mt-3">
+            <button 
+              className="btn btn-sm btn-outline" 
+              disabled={currentPage === 1} 
+              onClick={() => setCurrentPage(prev => prev - 1)}
+            >
+              Previous
+            </button>
+            <span className="text-sm text-muted">Page {currentPage} of {totalPages}</span>
+            <button 
+              className="btn btn-sm btn-outline" 
+              disabled={currentPage === totalPages} 
+              onClick={() => setCurrentPage(prev => prev + 1)}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

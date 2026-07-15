@@ -33,6 +33,20 @@ const Login = () => {
     }
   };
 
+  const handleQuickLogin = async (demoEmail, demoPassword) => {
+    setError('');
+    setLoading(true);
+    try {
+      const data = await login(demoEmail, demoPassword);
+      const payload = JSON.parse(atob(data.token.split('.')[1]));
+      navigate(`/${payload.role}/dashboard`);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Login failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="login-container">
       <div className="card login-card">
@@ -67,13 +81,37 @@ const Login = () => {
           Don't have an account? <Link to="/register">Register here</Link>
         </p>
         
-        <div style={{ marginTop: '2rem', padding: '1rem', backgroundColor: '#f5f6fa', border: '1px solid #dfe6e9', borderRadius: '4px', fontSize: '0.85rem' }}>
-          <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem', color: '#2c3e50' }}>Development Test Credentials</h4>
-          <ul style={{ listStyleType: 'none', paddingLeft: 0, margin: 0, color: '#7f8c8d' }}>
-            <li style={{ marginBottom: '0.25rem' }}><strong>Admin:</strong> admin@bbms.com / Admin@123</li>
-            <li style={{ marginBottom: '0.25rem' }}><strong>Hospital:</strong> info@fmclafia.com / Hospital@123</li>
-            <li><strong>Donor:</strong> chinedu.okafor@email.com / Password@123</li>
-          </ul>
+        <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+          <p className="text-muted text-center" style={{ fontSize: '0.8rem', marginBottom: '0.75rem' }}>Quick Login</p>
+          <div className="flex gap-2" style={{ justifyContent: 'center' }}>
+            <button 
+              type="button"
+              className="btn btn-outline" 
+              style={{ flex: 1, fontSize: '0.8rem', padding: '0.4rem 0.5rem' }}
+              disabled={loading}
+              onClick={() => handleQuickLogin('admin@bbms.com', 'Admin@123')}
+            >
+              Admin
+            </button>
+            <button 
+              type="button"
+              className="btn btn-outline" 
+              style={{ flex: 1, fontSize: '0.8rem', padding: '0.4rem 0.5rem' }}
+              disabled={loading}
+              onClick={() => handleQuickLogin('info@fmclafia.com', 'Hospital@123')}
+            >
+              Hospital
+            </button>
+            <button 
+              type="button"
+              className="btn btn-outline" 
+              style={{ flex: 1, fontSize: '0.8rem', padding: '0.4rem 0.5rem' }}
+              disabled={loading}
+              onClick={() => handleQuickLogin('chinedu.okafor@email.com', 'Password@123')}
+            >
+              Donor
+            </button>
+          </div>
         </div>
       </div>
     </div>

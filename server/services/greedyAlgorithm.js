@@ -48,13 +48,16 @@ const findNearestDonors = async (request) => {
   const hospitalLng = hospital?.coordinates?.longitude || 0;
 
   // Base eligibility query
-  const baseQuery = {
-    fcmToken: { $exists: true, $ne: null, $ne: '' },
-    $or: [
+  const baseQuery = {};
+  
+  // In production, enforce FCM tokens and 90-day waiting period
+  if (process.env.NODE_ENV === 'production') {
+    baseQuery.fcmToken = { $exists: true, $ne: null, $ne: '' };
+    baseQuery.$or = [
       { lastDonationDate: null },
       { lastDonationDate: { $lte: ninetyDaysAgo } }
-    ]
-  };
+    ];
+  }
 
   // Also ensure the donor's User account is approved
   const approvedUsers = await User.find({ role: 'donor', status: 'approved' }).select('_id').lean();

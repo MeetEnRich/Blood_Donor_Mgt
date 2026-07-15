@@ -130,6 +130,9 @@ If you seeded the database using `npm run seed`, you can log in using the follow
 - Email: `chinedu.okafor@email.com`
 - Password: `Password@123`
 
+### Quick Login Buttons
+To make evaluating and defending the project as seamless as possible, the login screen includes **Quick Login Buttons** at the bottom. You can simply click the corresponding button (e.g. *Login as Admin*, *Login as Hospital*, or *Login as Donor*) to instantly authenticate with the seeded test accounts without having to type the credentials manually.
+
 *(All test donor and hospital accounts use the passwords `Password@123` and `Hospital@123` respectively).*
 
 ## Security & Best Practices

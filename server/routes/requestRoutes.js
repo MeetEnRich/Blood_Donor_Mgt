@@ -6,7 +6,8 @@ const {
   getMyRequests,
   getRequestById,
   cancelRequest,
-  markDelivered
+  markDelivered,
+  getHospitalStats
 } = require('../controllers/requestController');
 const { protect } = require('../middleware/authMiddleware');
 const { restrictTo } = require('../middleware/roleMiddleware');
@@ -15,6 +16,7 @@ const { validateRequest } = require('../validators/requestValidator');
 // Hospital routes
 router.post('/', protect, restrictTo('hospital'), validateRequest, submitRequest);
 router.get('/my', protect, restrictTo('hospital'), getMyRequests);
+router.get('/stats/hospital', protect, restrictTo('hospital'), getHospitalStats);
 router.put('/:id/cancel', protect, restrictTo('hospital'), cancelRequest);
 router.put('/:id/delivered', protect, restrictTo('hospital'), markDelivered);
 

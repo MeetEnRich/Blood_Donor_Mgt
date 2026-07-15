@@ -16,10 +16,10 @@ const { validateBloodUnit } = require('../validators/inventoryValidator');
 router.get('/', protect, restrictTo('admin', 'hospital'), getAllUnits);
 router.get('/summary', protect, restrictTo('admin', 'hospital'), getInventorySummary);
 
-// Admin only
+// Admin and Hospital operations
 router.get('/expiry-alerts', protect, restrictTo('admin'), getExpiryAlerts);
 router.post('/', protect, restrictTo('admin'), validateBloodUnit, addUnit);
-router.put('/:id', protect, restrictTo('admin'), updateUnit);
-router.put('/:id/discard', protect, restrictTo('admin'), discardUnit);
+router.put('/:id', protect, restrictTo('admin', 'hospital'), updateUnit);
+router.put('/:id/discard', protect, restrictTo('admin', 'hospital'), discardUnit);
 
 module.exports = router;

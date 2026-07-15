@@ -5,10 +5,18 @@ import './ManageHospitals.css';
 const ManageHospitals = () => {
   const [hospitals, setHospitals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [filterType, setFilterType] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const rowsPerPage = 5;
 
   useEffect(() => {
     fetchHospitals();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterType, filterStatus]);
 
   const fetchHospitals = async () => {
     try {
@@ -35,6 +43,19 @@ const ManageHospitals = () => {
     }
   };
 
+  // Filter calculations
+  const filteredHospitals = hospitals.filter(hospital => {
+    const matchesType = filterType ? hospital.facilityType === filterType : true;
+    const matchesStatus = filterStatus ? hospital.status === filterStatus : true;
+    return matchesType && matchesStatus;
+  });
+
+  // Pagination calculations
+  const indexOfLastRow = currentPage * rowsPerPage;
+  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+  const currentRows = filteredHospitals.slice(indexOfFirstRow, indexOfLastRow);
+  const totalPages = Math.ceil(filteredHospitals.length / rowsPerPage);
+
   return (
     <div>
       <div className="flex justify-between items-center page-header">
@@ -42,6 +63,34 @@ const ManageHospitals = () => {
       </div>
 
       <div className="card">
+        <div className="flex justify-between items-center" style={{ marginBottom: '0.75rem' }}>
+          <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Hospitals List</h3>
+          <div className="flex gap-2">
+            <select 
+              className="form-control" 
+              style={{ width: 'auto', padding: '0.2rem 0.5rem', fontSize: '0.8rem', height: 'auto' }} 
+              value={filterType} 
+              onChange={e => setFilterType(e.target.value)}
+            >
+              <option value="">All Types</option>
+              <option value="Hospital">Hospital</option>
+              <option value="Clinic">Clinic</option>
+              <option value="Blood Bank">Blood Bank</option>
+              <option value="Health Centre">Health Centre</option>
+            </select>
+            <select 
+              className="form-control" 
+              style={{ width: 'auto', padding: '0.2rem 0.5rem', fontSize: '0.8rem', height: 'auto' }} 
+              value={filterStatus} 
+              onChange={e => setFilterStatus(e.target.value)}
+            >
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="suspended">Suspended</option>
+            </select>
+          </div>
+        </div>
         <div className="table-responsive">
           <table>
             <thead>
@@ -56,8 +105,8 @@ const ManageHospitals = () => {
             <tbody>
               {loading ? (
                 <tr><td colSpan="5" className="text-center">Loading...</td></tr>
-              ) : hospitals.length > 0 ? (
-                hospitals.map(hospital => (
+              ) : currentRows.length > 0 ? (
+                currentRows.map(hospital => (
                   <tr key={hospital._id}>
                     <td>{hospital.facilityName}</td>
                     <td>{hospital.facilityType}</td>
@@ -83,6 +132,26 @@ const ManageHospitals = () => {
             </tbody>
           </table>
         </div>
+
+        {!loading && totalPages > 1 && (
+          <div className="flex justify-between items-center mt-3">
+            <button 
+              className="btn btn-sm btn-outline" 
+              disabled={currentPage === 1} 
+              onClick={() => setCurrentPage(prev => prev - 1)}
+            >
+              Previous
+            </button>
+            <span className="text-sm text-muted">Page {currentPage} of {totalPages}</span>
+            <button 
+              className="btn btn-sm btn-outline" 
+              disabled={currentPage === totalPages} 
+              onClick={() => setCurrentPage(prev => prev + 1)}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

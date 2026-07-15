@@ -25,12 +25,12 @@ router.get('/me/eligibility', protect, restrictTo('donor'), checkEligibility);
 router.get('/me/alerts', protect, restrictTo('donor'), getMyAlerts);
 router.post('/me/respond-alert', protect, restrictTo('donor'), respondToAlert);
 
-// Admin routes
+// Admin and Hospital routes
 router.get('/', protect, restrictTo('admin'), getAllDonors);
 router.get('/:id', protect, restrictTo('admin'), getDonorById);
 router.put('/:id/approve', protect, restrictTo('admin'), approveDonor);
 router.put('/:id/suspend', protect, restrictTo('admin'), suspendDonor);
-router.post('/:id/donation', protect, restrictTo('admin'), validateDonation, recordDonation);
+router.post('/:id/donation', protect, restrictTo('admin', 'hospital'), validateDonation, recordDonation);
 router.get('/:id/eligibility', protect, restrictTo('admin'), checkEligibility);
 
 module.exports = router;

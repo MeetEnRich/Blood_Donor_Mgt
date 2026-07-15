@@ -14,6 +14,14 @@ const getAllUnits = async (req, res) => {
     if (bloodGroup) filter.bloodGroup = bloodGroup;
     if (status) filter.status = status;
 
+    if (req.user.role === 'hospital') {
+      const Hospital = require('../models/Hospital');
+      const hospital = await Hospital.findOne({ userId: req.user.userId });
+      if (hospital) {
+        filter.facilityId = hospital._id;
+      }
+    }
+
     if (startDate || endDate) {
       filter.collectionDate = {};
       if (startDate) filter.collectionDate.$gte = new Date(startDate);

@@ -30,7 +30,7 @@ const AppContent = () => {
       >
         {user && <Navbar toggleSidebar={toggleSidebar} isSidebarCollapsed={isSidebarCollapsed} />}
         
-        <main className={user ? 'content-area' : ''} style={{ flex: 1, padding: user ? '2.5rem' : '0' }}>
+        <main className={user ? 'content-area' : ''} style={{ flex: 1, padding: user ? '1.25rem' : '0' }}>
           <AppRoutes />
         </main>
       </div>

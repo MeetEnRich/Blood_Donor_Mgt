@@ -58,12 +58,12 @@ const SubmitRequest = () => {
   }
 
   return (
-    <div className="submit-request-container">
-      <div className="page-header">
+    <div className="submit-request-container" style={{ maxWidth: '600px', margin: '0 auto', padding: '1rem' }}>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'center' }}>
         <h1>Submit Blood Request</h1>
       </div>
       
-      <div className="card" style={{ maxWidth: '600px' }}>
+      <div className="card" style={{ width: '100%' }}>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label className="form-label">Blood Group Needed</label>

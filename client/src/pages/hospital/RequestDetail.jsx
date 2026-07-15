@@ -19,9 +19,12 @@ const RequestDetail = () => {
 
   const fetchRequest = async () => {
     try {
-      // Assuming GET /hospital/requests/:id exists. Fallback if not.
-      const res = await api.get(`/hospital/requests/${id}`).catch(() => ({ data: null }));
-      if (res.data) setRequest(res.data);
+      const res = await api.get(`/requests/${id}`).catch(() => ({ data: null }));
+      if (res.data && res.data.request) {
+        setRequest(res.data.request);
+      } else if (res.data) {
+        setRequest(res.data);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -31,10 +34,30 @@ const RequestDetail = () => {
 
   const handleMarkDelivered = async () => {
     try {
-      await api.post(`/hospital/requests/${id}/deliver`);
+      await api.put(`/requests/${id}/delivered`);
       fetchRequest();
     } catch (err) {
       alert('Failed to mark as delivered');
+    }
+  };
+
+  const [recordedDonors, setRecordedDonors] = useState([]);
+
+  const handleRecordDonation = async (donorId) => {
+    try {
+      const payload = {
+        date: new Date().toISOString(),
+        facilityName: request.hospitalId?.facilityName || 'Hospital',
+        units: 1
+      };
+      await api.post(`/donors/${donorId}/donation`, payload);
+      setRecordedDonors(prev => [...prev, donorId]);
+
+      // After recording, mark the request as fulfilled
+      await api.put(`/requests/${id}/delivered`);
+      fetchRequest();
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -72,22 +95,57 @@ const RequestDetail = () => {
                   <p className="text-muted text-sm mt-2">Waiting for eligible donors to accept the request.</p>
                 </div>
               )}
+
+              {/* Render Accepted Donors if any exist */}
+              {request.acceptedDonors && request.acceptedDonors.length > 0 && (
+                <div className="mt-3">
+                  <p><strong>Accepted Donors (Pending Verification):</strong></p>
+                  <ul style={{ listStyle: 'none', padding: 0, marginTop: '0.5rem' }}>
+                    {request.acceptedDonors.map(donor => (
+                      <li key={donor._id} className="flex justify-between items-center p-2 mb-2" style={{ backgroundColor: 'var(--bg-card)', borderRadius: '4px', border: '1px solid var(--border-color)' }}>
+                        <div>
+                          <strong>{donor.fullName}</strong> <span className="badge badge-primary" style={{ fontSize: '0.7rem' }}>{donor.bloodGroup}</span>
+                          <div className="text-muted text-sm">{donor.phone || 'No phone provided'}</div>
+                        </div>
+                        {recordedDonors.includes(donor._id) || request.status === 'fulfilled' ? (
+                          <span className="badge badge-success" style={{ padding: '0.35rem 0.75rem' }}>✓ Donated</span>
+                        ) : (
+                          <button className="btn btn-sm btn-success" onClick={() => handleRecordDonation(donor._id)}>
+                            Record Donation
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               
-              {request.status === 'fulfilled' && (
-                <div>
+              {request.status === 'fulfilled' && request.reservedUnits && request.reservedUnits.length > 0 && (
+                <div className="mt-3">
                   <p><strong>Reserved Units:</strong></p>
                   <ul style={{ paddingLeft: '1.5rem' }}>
-                    {request.fulfilledUnits?.map(unit => (
-                      <li key={unit._id}>{unit.unitCode}</li>
-                    )) || <li>Units allocated from inventory.</li>}
+                    {request.reservedUnits.map(unit => (
+                      <li key={unit._id}>{unit.unitCode} ({unit.componentType})</li>
+                    ))}
                   </ul>
-                  <button className="btn btn-success mt-3 w-100" onClick={handleMarkDelivered}>
-                    Mark as Delivered
-                  </button>
+                  {request.reservedUnits.some(u => u.status === 'reserved') && (
+                    <button className="btn btn-success mt-3" style={{ width: '100%' }} onClick={handleMarkDelivered}>
+                      Mark as Delivered
+                    </button>
+                  )}
+                  {request.reservedUnits.every(u => u.status === 'delivered') && (
+                    <div className="text-success font-medium mt-3">✓ All units delivered to facility.</div>
+                  )}
                 </div>
               )}
 
-              {request.status !== 'sos_dispatched' && request.status !== 'fulfilled' && (
+              {request.status === 'fulfilled' && (!request.reservedUnits || request.reservedUnits.length === 0) && (
+                <div className="mt-3 text-success font-medium">
+                  ✓ Request successfully fulfilled via direct donor donation.
+                </div>
+              )}
+
+              {request.status !== 'sos_dispatched' && request.status !== 'fulfilled' && (!request.acceptedDonors || request.acceptedDonors.length === 0) && (
                 <p className="text-muted">No fulfillment details available yet.</p>
               )}
             </div>

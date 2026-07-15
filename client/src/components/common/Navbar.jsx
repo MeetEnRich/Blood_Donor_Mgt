@@ -4,7 +4,7 @@ import { Menu } from 'lucide-react';
 import './Navbar.css';
 
 const Navbar = ({ toggleSidebar, isSidebarCollapsed }) => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   return (
     <nav className="navbar">
@@ -24,7 +24,6 @@ const Navbar = ({ toggleSidebar, isSidebarCollapsed }) => {
         <div className="navbar-menu">
           <span className="badge badge-secondary role-badge">{user.role}</span>
           <span className="user-email hidden-mobile">{user.email || user.id}</span>
-          <button className="btn btn-outline btn-sm" onClick={logout}>Logout</button>
         </div>
       )}
     </nav>

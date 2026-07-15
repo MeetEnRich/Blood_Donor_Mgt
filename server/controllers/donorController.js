@@ -1,6 +1,7 @@
 const Donor = require('../models/Donor');
 const User = require('../models/User');
 const Request = require('../models/Request');
+const BloodUnit = require('../models/BloodUnit');
 const { isDonorEligible, nextEligibleDate } = require('../utils/eligibilityCheck');
 
 /**
@@ -189,8 +190,9 @@ const suspendDonor = async (req, res) => {
 };
 
 /**
- * Record a donation for a donor (Admin only).
- * Pushes to donationHistory and updates lastDonationDate.
+ * Record a donation for a donor (Admin or Hospital).
+ * Pushes to donationHistory, updates lastDonationDate,
+ * and creates a new BloodUnit in inventory.
  */
 const recordDonation = async (req, res) => {
   try {
@@ -212,7 +214,34 @@ const recordDonation = async (req, res) => {
     donor.lastDonationDate = new Date(date);
     await donor.save();
 
-    res.json({ message: 'Donation recorded successfully', donor });
+    // Create BloodUnit(s) in inventory for each unit donated
+    const Hospital = require('../models/Hospital');
+    const hospital = await Hospital.findOne({ userId: req.user.userId });
+
+    const createdUnits = [];
+    for (let i = 0; i < parseInt(units); i++) {
+      const collectionDate = new Date(date);
+      const expirationDate = new Date(date);
+      expirationDate.setDate(expirationDate.getDate() + 42); // 42-day shelf life for whole blood
+
+      const unitCode = `BU-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
+
+      const bloodUnit = new BloodUnit({
+        unitCode,
+        bloodGroup: donor.bloodGroup,
+        componentType: 'Whole Blood',
+        collectionDate,
+        expirationDate,
+        status: 'available',
+        donorId: donor._id,
+        facilityId: hospital ? hospital._id : null,
+        notes: `Donated by ${donor.fullName} at ${facilityName}`
+      });
+      await bloodUnit.save();
+      createdUnits.push(bloodUnit);
+    }
+
+    res.json({ message: 'Donation recorded successfully', donor, createdUnits });
   } catch (error) {
     console.error('Record donation error:', error);
     res.status(500).json({ message: 'Failed to record donation', error: error.message });
@@ -265,7 +294,7 @@ const getMyAlerts = async (req, res) => {
 
     const alerts = await Request.find({
       alertedDonors: donor._id,
-      status: { $in: ['sos_dispatched', 'pending_donation'] }
+      status: { $in: ['sos_dispatched', 'pending_donation', 'fulfilled'] }
     })
       .populate('hospitalId', 'facilityName address phone')
       .sort({ createdAt: -1 })
@@ -315,6 +344,8 @@ const respondToAlert = async (req, res) => {
 
       res.json({ message: 'You have accepted the SOS alert. Thank you!' });
     } else {
+      request.alertedDonors.pull(donor._id);
+      await request.save();
       res.json({ message: 'You have declined the SOS alert.' });
     }
   } catch (error) {

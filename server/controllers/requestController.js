@@ -340,11 +340,49 @@ const markDelivered = async (req, res) => {
   }
 };
 
+/**
+ * Get stats for the logged-in hospital.
+ */
+const getHospitalStats = async (req, res) => {
+  try {
+    const Hospital = require('../models/Hospital');
+    const hospital = await Hospital.findOne({ userId: req.user.userId });
+    if (!hospital) {
+      return res.status(404).json({ message: 'Hospital profile not found' });
+    }
+
+    const [activeRequests, fulfilledRequests, availableNetworkUnits] = await Promise.all([
+      Request.countDocuments({ 
+        hospitalId: hospital._id, 
+        status: { $in: ['submitted', 'fulfilling', 'sos_dispatched', 'pending_donation'] } 
+      }),
+      Request.countDocuments({ 
+        hospitalId: hospital._id, 
+        status: 'fulfilled' 
+      }),
+      BloodUnit.countDocuments({ 
+        status: 'available', 
+        expirationDate: { $gt: new Date() } 
+      })
+    ]);
+
+    res.json({
+      activeRequests,
+      fulfilledRequests,
+      availableNetworkUnits
+    });
+  } catch (error) {
+    console.error('Get hospital stats error:', error);
+    res.status(500).json({ message: 'Failed to fetch hospital stats', error: error.message });
+  }
+};
+
 module.exports = {
   submitRequest,
   getAllRequests,
   getMyRequests,
   getRequestById,
   cancelRequest,
-  markDelivered
+  markDelivered,
+  getHospitalStats
 };

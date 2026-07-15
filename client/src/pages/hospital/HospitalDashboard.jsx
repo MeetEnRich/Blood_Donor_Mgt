@@ -16,8 +16,8 @@ const HospitalDashboard = () => {
     const fetchDashboardData = async () => {
       try {
         const [statsRes, reqRes] = await Promise.all([
-          api.get('/hospital/stats').catch(() => ({ data: { activeRequests: 2, fulfilledRequests: 45, availableNetworkUnits: 120 } })),
-          api.get('/hospital/requests?limit=5').catch(() => ({ data: { requests: [] } }))
+          api.get('/requests/stats/hospital').catch(() => ({ data: { activeRequests: 0, fulfilledRequests: 0, availableNetworkUnits: 0 } })),
+          api.get('/requests/my?limit=5').catch(() => ({ data: { requests: [] } }))
         ]);
         
         if (statsRes.data) setStats(statsRes.data);
