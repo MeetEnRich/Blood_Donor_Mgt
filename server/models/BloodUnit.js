@@ -1,68 +1,75 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/db');
 
-const bloodUnitSchema = new mongoose.Schema({
+const BloodUnit = sequelize.define('BloodUnit', {
+  _id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
   unitCode: {
-    type: String,
-    unique: true
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true,
   },
   bloodGroup: {
-    type: String,
-    enum: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
-    required: [true, 'Blood group is required']
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      isIn: [['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']],
+    },
   },
   componentType: {
-    type: String,
-    enum: ['Whole Blood', 'Packed Red Cells', 'Platelets', 'Fresh Frozen Plasma'],
-    default: 'Whole Blood'
+    type: DataTypes.STRING,
+    defaultValue: 'Whole Blood',
+    validate: {
+      isIn: [['Whole Blood', 'Packed Red Cells', 'Platelets', 'Fresh Frozen Plasma']],
+    },
   },
   collectionDate: {
-    type: Date,
-    required: [true, 'Collection date is required']
+    type: DataTypes.DATE,
+    allowNull: false,
   },
   expirationDate: {
-    type: Date,
-    required: [true, 'Expiration date is required']
+    type: DataTypes.DATE,
+    allowNull: false,
   },
   status: {
-    type: String,
-    enum: ['available', 'reserved', 'delivered', 'expired', 'discarded'],
-    default: 'available'
+    type: DataTypes.STRING,
+    defaultValue: 'available',
+    validate: {
+      isIn: [['available', 'reserved', 'delivered', 'expired', 'discarded']],
+    },
   },
   donorId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Donor'
+    type: DataTypes.UUID,
+    allowNull: true,
   },
   facilityId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital'
+    type: DataTypes.UUID,
+    allowNull: true,
   },
   reservedForRequestId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Request',
-    default: null
+    type: DataTypes.UUID,
+    allowNull: true,
+    defaultValue: null,
   },
   notes: {
-    type: String
+    type: DataTypes.TEXT,
+    allowNull: true,
   },
   createdAt: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
   },
   updatedAt: {
-    type: Date,
-    default: Date.now
-  }
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+  },
 });
 
-// Indexes for efficient querying
-bloodUnitSchema.index({ bloodGroup: 1 });
-bloodUnitSchema.index({ status: 1 });
-bloodUnitSchema.index({ expirationDate: 1 });
-bloodUnitSchema.index({ bloodGroup: 1, status: 1, expirationDate: 1 });
+BloodUnit.prototype.toObject = function () {
+  return this.get({ plain: true });
+};
 
-// Update updatedAt on save
-bloodUnitSchema.pre('save', function () {
-  this.updatedAt = Date.now();
-});
-
-module.exports = mongoose.model('BloodUnit', bloodUnitSchema);
+module.exports = BloodUnit;

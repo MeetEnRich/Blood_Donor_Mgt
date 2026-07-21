@@ -5,38 +5,32 @@
  * Run: npm run seed
  */
 
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
-require('dotenv').config();
-
+const connectDB = require('./config/db');
+const { sequelize } = require('./config/db');
 const User = require('./models/User');
 const Donor = require('./models/Donor');
 const Hospital = require('./models/Hospital');
 const BloodUnit = require('./models/BloodUnit');
 const Request = require('./models/Request');
 const SurveyResponse = require('./models/SurveyResponse');
-
-const SALT_ROUNDS = 12;
+const { Op } = require('sequelize');
 
 const seed = async () => {
   try {
-    // Connect to MongoDB
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log('Connected to MongoDB');
+    // Connect to SQLite Database
+    await connectDB();
+    console.log('Connected to SQLite');
 
-    // Clear all collections
-    console.log('Clearing all collections...');
-    await Promise.all([
-      User.deleteMany({}),
-      Donor.deleteMany({}),
-      Hospital.deleteMany({}),
-      BloodUnit.deleteMany({}),
-      Request.deleteMany({}),
-      SurveyResponse.deleteMany({})
-    ]);
-    console.log('All collections cleared');
+    // Clear all tables
+    console.log('Clearing all tables...');
+    await User.destroy({ where: {}, cascade: true });
+    await Donor.destroy({ where: {} });
+    await Hospital.destroy({ where: {} });
+    await BloodUnit.destroy({ where: {} });
+    await Request.destroy({ where: {} });
+    await SurveyResponse.destroy({ where: {} });
+    console.log('All tables cleared');
 
-    // Use plain text passwords (the User model pre-save hook will hash them)
     const adminPassword = 'Admin@123';
     const donorPassword = 'Password@123';
     const hospitalPassword = 'Hospital@123';
@@ -156,6 +150,7 @@ const seed = async () => {
     const donors = [];
 
     for (const d of donorData) {
+      // Passwords will be automatically hashed by User hook
       const user = await User.create({
         email: d.email,
         password: donorPassword,
@@ -412,6 +407,7 @@ const seed = async () => {
       urgencyLevel: 'Critical',
       status: 'sos_dispatched',
       alertedDonors: [donors[0]._id, donors[2]._id, donors[3]._id, donors[4]._id],
+      acceptedDonors: [],
       notes: 'Critical shortage — SOS sent to nearby donors'
     });
 
@@ -437,14 +433,14 @@ const seed = async () => {
       notes: 'Routine blood request — pending processing'
     });
 
-    // Link reserved units to their requests
-    await BloodUnit.updateMany(
-      { _id: { $in: [bloodUnits[12]._id, bloodUnits[13]._id] } },
-      { $set: { reservedForRequestId: request1._id } }
+    // Link reserved units to their requests in SQLite
+    await BloodUnit.update(
+      { reservedForRequestId: request1._id },
+      { where: { _id: { [Op.in]: [bloodUnits[12]._id, bloodUnits[13]._id] } } }
     );
-    await BloodUnit.updateOne(
-      { _id: bloodUnits[14]._id },
-      { $set: { reservedForRequestId: request2._id } }
+    await BloodUnit.update(
+      { reservedForRequestId: request2._id },
+      { where: { _id: bloodUnits[14]._id } }
     );
 
     // ═══════════════════════════════════════════════════════════

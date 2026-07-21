@@ -6,7 +6,7 @@ A robust, full-stack Blood Bank Management System built to streamline the blood 
 
 The BBMS connects blood donors, hospitals, and system administrators into a single unified platform. By digitizing inventory, tracking donor eligibility, and offering emergency SOS alerts to nearby eligible donors, the system aims to solve critical shortages in the blood supply chain.
 
-This project was built using the **MERN** stack (MongoDB, Express.js, React, Node.js/Vite).
+This project was built using **React, Node.js, Express, and SQLite** (Sequelize ORM).
 
 ## Features
 
@@ -21,7 +21,7 @@ This project was built using the **MERN** stack (MongoDB, Express.js, React, Nod
 
 - **Frontend**: React, Vite, React Router v6, Context API
 - **Backend**: Node.js, Express.js
-- **Database**: MongoDB (Mongoose ODM)
+- **Database**: SQLite (Sequelize ORM)
 - **Authentication**: JWT (JSON Web Tokens), bcryptjs
 - **Styling**: Vanilla CSS (Professional Healthcare Theme)
 
@@ -52,9 +52,8 @@ blood_donor_mgt/
 
 ### Prerequisites
 - Node.js (v18 or higher)
-- Local MongoDB instance running on `localhost:27017`
 - Environment variables: Please ensure that `.env` files exist in both the `/server` and `/client` directories before starting.
-  - Server `.env` needs `MONGO_URI`, `JWT_SECRET`, etc.
+  - Server `.env` needs `JWT_SECRET`, etc. (The SQLite database path is automatically configured, so no database server setup is needed).
   - Client `.env` needs `VITE_API_URL=http://localhost:5000/api`
 
 ### Automatic Setup (Windows)

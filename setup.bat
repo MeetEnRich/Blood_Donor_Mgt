@@ -9,7 +9,7 @@ cd server
 call npm install
 echo.
 
-echo Seeding Database (assuming MongoDB is running on localhost:27017)...
+echo Seeding SQLite Database...
 call npm run seed
 cd ..
 echo.

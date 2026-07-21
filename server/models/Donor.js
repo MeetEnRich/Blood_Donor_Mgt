@@ -1,78 +1,92 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/db');
 
-const donorSchema = new mongoose.Schema({
+const Donor = sequelize.define('Donor', {
+  _id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    unique: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    unique: true,
   },
   fullName: {
-    type: String,
-    required: [true, 'Full name is required']
+    type: DataTypes.STRING,
+    allowNull: false,
   },
   dateOfBirth: {
-    type: Date,
-    required: [true, 'Date of birth is required']
+    type: DataTypes.DATE,
+    allowNull: false,
   },
   gender: {
-    type: String,
-    enum: ['Male', 'Female', 'Other'],
-    required: [true, 'Gender is required']
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      isIn: [['Male', 'Female', 'Other']],
+    },
   },
   bloodGroup: {
-    type: String,
-    enum: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
-    required: [true, 'Blood group is required']
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      isIn: [['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']],
+    },
   },
   genotype: {
-    type: String,
-    enum: ['AA', 'AS', 'SS', 'AC']
+    type: DataTypes.STRING,
+    allowNull: true,
+    validate: {
+      isIn: [['AA', 'AS', 'SS', 'AC']],
+    },
   },
   phone: {
-    type: String,
-    required: [true, 'Phone number is required']
+    type: DataTypes.STRING,
+    allowNull: false,
   },
   address: {
-    type: String
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   state: {
-    type: String
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   lga: {
-    type: String
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   coordinates: {
-    latitude: { type: Number },
-    longitude: { type: Number }
+    type: DataTypes.JSON, // { latitude, longitude }
+    allowNull: true,
   },
   fcmToken: {
-    type: String
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   medicalHistory: {
-    type: String
+    type: DataTypes.TEXT,
+    allowNull: true,
   },
   lastDonationDate: {
-    type: Date,
-    default: null
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null,
   },
-  donationHistory: [{
-    date: Date,
-    facilityName: String,
-    units: Number,
-    recordedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
-    }
-  }],
+  donationHistory: {
+    type: DataTypes.JSON, // array of [{ date, facilityName, units, recordedBy }]
+    allowNull: false,
+    defaultValue: [],
+  },
   createdAt: {
-    type: Date,
-    default: Date.now
-  }
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+  },
 });
 
-// Indexes for efficient querying
-donorSchema.index({ bloodGroup: 1 });
-donorSchema.index({ 'coordinates.latitude': 1, 'coordinates.longitude': 1 });
+Donor.prototype.toObject = function () {
+  return this.get({ plain: true });
+};
 
-module.exports = mongoose.model('Donor', donorSchema);
+module.exports = Donor;

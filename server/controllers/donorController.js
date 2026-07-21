@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Request = require('../models/Request');
 const BloodUnit = require('../models/BloodUnit');
 const { isDonorEligible, nextEligibleDate } = require('../utils/eligibilityCheck');
+const { Op } = require('sequelize');
 
 /**
  * Get all donors (Admin only).
@@ -17,25 +18,35 @@ const getAllDonors = async (req, res) => {
     const filter = {};
     if (bloodGroup) filter.bloodGroup = bloodGroup;
 
-    // If status filter, find matching user IDs first
-    let userFilter = { role: 'donor' };
-    if (status) userFilter.status = status;
+    const includeUser = {
+      model: User,
+      as: 'user',
+      attributes: ['email', 'status'],
+      where: { role: 'donor' }
+    };
+    if (status) {
+      includeUser.where.status = status;
+    }
 
-    const matchingUsers = await User.find(userFilter).select('_id').lean();
-    const userIds = matchingUsers.map(u => u._id);
-    filter.userId = { $in: userIds };
+    const { rows: donors, count: total } = await Donor.findAndCountAll({
+      where: filter,
+      include: [includeUser],
+      offset: skip,
+      limit: parseInt(limit),
+      order: [['createdAt', 'DESC']]
+    });
 
-    const donors = await Donor.find(filter)
-      .populate('userId', 'email status')
-      .skip(skip)
-      .limit(parseInt(limit))
-      .sort({ createdAt: -1 })
-      .lean();
-
-    const total = await Donor.countDocuments(filter);
+    // Map user nested properties to match the populated Mongoose structure if needed,
+    // though Mongoose populate embeds them in `userId`. Let's map it so `userId` property
+    // behaves like populated object for frontend compatibility.
+    const mappedDonors = donors.map(d => {
+      const plain = d.toObject();
+      plain.userId = plain.user; // alias user as userId
+      return plain;
+    });
 
     res.json({
-      donors,
+      donors: mappedDonors,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -54,14 +65,19 @@ const getAllDonors = async (req, res) => {
  */
 const getMyProfile = async (req, res) => {
   try {
-    const donor = await Donor.findOne({ userId: req.user.userId })
-      .populate('userId', 'email status role');
+    const donor = await Donor.findOne({
+      where: { userId: req.user.userId },
+      include: [{ model: User, as: 'user', attributes: ['email', 'status', 'role'] }]
+    });
 
     if (!donor) {
       return res.status(404).json({ message: 'Donor profile not found' });
     }
 
-    res.json({ donor });
+    const mapped = donor.toObject();
+    mapped.userId = mapped.user;
+
+    res.json({ donor: mapped });
   } catch (error) {
     console.error('Get my profile error:', error);
     res.status(500).json({ message: 'Failed to fetch profile', error: error.message });
@@ -85,17 +101,23 @@ const updateMyProfile = async (req, res) => {
       }
     });
 
-    const donor = await Donor.findOneAndUpdate(
-      { userId: req.user.userId },
-      { $set: updates },
-      { new: true, runValidators: true }
-    ).populate('userId', 'email status');
-
+    const donor = await Donor.findOne({ where: { userId: req.user.userId } });
     if (!donor) {
       return res.status(404).json({ message: 'Donor profile not found' });
     }
 
-    res.json({ message: 'Profile updated successfully', donor });
+    await donor.update(updates);
+
+    // Refresh and include User info
+    const updatedDonor = await Donor.findOne({
+      where: { userId: req.user.userId },
+      include: [{ model: User, as: 'user', attributes: ['email', 'status'] }]
+    });
+
+    const mapped = updatedDonor.toObject();
+    mapped.userId = mapped.user;
+
+    res.json({ message: 'Profile updated successfully', donor: mapped });
   } catch (error) {
     console.error('Update profile error:', error);
     res.status(500).json({ message: 'Failed to update profile', error: error.message });
@@ -113,15 +135,12 @@ const updateFCMToken = async (req, res) => {
       return res.status(400).json({ message: 'FCM token is required' });
     }
 
-    const donor = await Donor.findOneAndUpdate(
-      { userId: req.user.userId },
-      { $set: { fcmToken } },
-      { new: true }
-    );
-
+    const donor = await Donor.findOne({ where: { userId: req.user.userId } });
     if (!donor) {
       return res.status(404).json({ message: 'Donor profile not found' });
     }
+
+    await donor.update({ fcmToken });
 
     res.json({ message: 'FCM token updated successfully' });
   } catch (error) {
@@ -135,14 +154,18 @@ const updateFCMToken = async (req, res) => {
  */
 const getDonorById = async (req, res) => {
   try {
-    const donor = await Donor.findById(req.params.id)
-      .populate('userId', 'email status role');
+    const donor = await Donor.findByPk(req.params.id, {
+      include: [{ model: User, as: 'user', attributes: ['email', 'status', 'role'] }]
+    });
 
     if (!donor) {
       return res.status(404).json({ message: 'Donor not found' });
     }
 
-    res.json({ donor });
+    const mapped = donor.toObject();
+    mapped.userId = mapped.user;
+
+    res.json({ donor: mapped });
   } catch (error) {
     console.error('Get donor by ID error:', error);
     res.status(500).json({ message: 'Failed to fetch donor', error: error.message });
@@ -155,12 +178,12 @@ const getDonorById = async (req, res) => {
  */
 const approveDonor = async (req, res) => {
   try {
-    const donor = await Donor.findById(req.params.id);
+    const donor = await Donor.findByPk(req.params.id);
     if (!donor) {
       return res.status(404).json({ message: 'Donor not found' });
     }
 
-    await User.findByIdAndUpdate(donor.userId, { status: 'approved' });
+    await User.update({ status: 'approved' }, { where: { _id: donor.userId } });
 
     res.json({ message: 'Donor approved successfully' });
   } catch (error) {
@@ -175,12 +198,12 @@ const approveDonor = async (req, res) => {
  */
 const suspendDonor = async (req, res) => {
   try {
-    const donor = await Donor.findById(req.params.id);
+    const donor = await Donor.findByPk(req.params.id);
     if (!donor) {
       return res.status(404).json({ message: 'Donor not found' });
     }
 
-    await User.findByIdAndUpdate(donor.userId, { status: 'suspended' });
+    await User.update({ status: 'suspended' }, { where: { _id: donor.userId } });
 
     res.json({ message: 'Donor suspended successfully' });
   } catch (error) {
@@ -198,7 +221,7 @@ const recordDonation = async (req, res) => {
   try {
     const { date, facilityName, units } = req.body;
 
-    const donor = await Donor.findById(req.params.id);
+    const donor = await Donor.findByPk(req.params.id);
     if (!donor) {
       return res.status(404).json({ message: 'Donor not found' });
     }
@@ -210,13 +233,15 @@ const recordDonation = async (req, res) => {
       recordedBy: req.user.userId
     };
 
-    donor.donationHistory.push(donation);
-    donor.lastDonationDate = new Date(date);
-    await donor.save();
+    const donationHistory = [...(donor.donationHistory || []), donation];
+    await donor.update({
+      donationHistory,
+      lastDonationDate: new Date(date)
+    });
 
     // Create BloodUnit(s) in inventory for each unit donated
     const Hospital = require('../models/Hospital');
-    const hospital = await Hospital.findOne({ userId: req.user.userId });
+    const hospital = await Hospital.findOne({ where: { userId: req.user.userId } });
 
     const createdUnits = [];
     for (let i = 0; i < parseInt(units); i++) {
@@ -226,7 +251,7 @@ const recordDonation = async (req, res) => {
 
       const unitCode = `BU-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
 
-      const bloodUnit = new BloodUnit({
+      const bloodUnit = await BloodUnit.create({
         unitCode,
         bloodGroup: donor.bloodGroup,
         componentType: 'Whole Blood',
@@ -237,7 +262,6 @@ const recordDonation = async (req, res) => {
         facilityId: hospital ? hospital._id : null,
         notes: `Donated by ${donor.fullName} at ${facilityName}`
       });
-      await bloodUnit.save();
       createdUnits.push(bloodUnit);
     }
 
@@ -255,9 +279,9 @@ const checkEligibility = async (req, res) => {
   try {
     let donor;
     if (req.params.id) {
-      donor = await Donor.findById(req.params.id);
+      donor = await Donor.findByPk(req.params.id);
     } else {
-      donor = await Donor.findOne({ userId: req.user.userId });
+      donor = await Donor.findOne({ where: { userId: req.user.userId } });
     }
 
     if (!donor) {
@@ -287,20 +311,29 @@ const checkEligibility = async (req, res) => {
  */
 const getMyAlerts = async (req, res) => {
   try {
-    const donor = await Donor.findOne({ userId: req.user.userId });
+    const donor = await Donor.findOne({ where: { userId: req.user.userId } });
     if (!donor) {
       return res.status(404).json({ message: 'Donor profile not found' });
     }
 
-    const alerts = await Request.find({
-      alertedDonors: donor._id,
-      status: { $in: ['sos_dispatched', 'pending_donation', 'fulfilled'] }
-    })
-      .populate('hospitalId', 'facilityName address phone')
-      .sort({ createdAt: -1 })
-      .lean();
+    const alerts = await Request.findAll({
+      where: {
+        alertedDonors: {
+          [Op.like]: `%${donor._id}%`
+        },
+        status: { [Op.in]: ['sos_dispatched', 'pending_donation', 'fulfilled'] }
+      },
+      include: [{ model: Hospital, as: 'hospital', attributes: ['facilityName', 'address', 'phone'] }],
+      order: [['createdAt', 'DESC']]
+    });
 
-    res.json({ alerts });
+    const mappedAlerts = alerts.map(a => {
+      const plain = a.toObject();
+      plain.hospitalId = plain.hospital; // alias hospital to hospitalId
+      return plain;
+    });
+
+    res.json({ alerts: mappedAlerts });
   } catch (error) {
     console.error('Get my alerts error:', error);
     res.status(500).json({ message: 'Failed to fetch alerts', error: error.message });
@@ -319,33 +352,36 @@ const respondToAlert = async (req, res) => {
       return res.status(400).json({ message: 'Response must be either accept or decline' });
     }
 
-    const donor = await Donor.findOne({ userId: req.user.userId });
+    const donor = await Donor.findOne({ where: { userId: req.user.userId } });
     if (!donor) {
       return res.status(404).json({ message: 'Donor profile not found' });
     }
 
-    const request = await Request.findById(requestId);
+    const request = await Request.findByPk(requestId);
     if (!request) {
       return res.status(404).json({ message: 'Request not found' });
     }
 
     // Check if donor was actually alerted
-    if (!request.alertedDonors.includes(donor._id)) {
+    const alertedDonors = request.alertedDonors || [];
+    if (!alertedDonors.includes(donor._id)) {
       return res.status(403).json({ message: 'You were not alerted for this request' });
     }
 
     if (response === 'accept') {
-      // Avoid duplicates
-      if (!request.acceptedDonors.includes(donor._id)) {
-        request.acceptedDonors.push(donor._id);
+      const acceptedDonors = request.acceptedDonors || [];
+      if (!acceptedDonors.includes(donor._id)) {
+        acceptedDonors.push(donor._id);
       }
-      request.status = 'pending_donation';
-      await request.save();
+      await request.update({
+        acceptedDonors,
+        status: 'pending_donation'
+      });
 
       res.json({ message: 'You have accepted the SOS alert. Thank you!' });
     } else {
-      request.alertedDonors.pull(donor._id);
-      await request.save();
+      const updatedAlerted = alertedDonors.filter(id => id !== donor._id);
+      await request.update({ alertedDonors: updatedAlerted });
       res.json({ message: 'You have declined the SOS alert.' });
     }
   } catch (error) {

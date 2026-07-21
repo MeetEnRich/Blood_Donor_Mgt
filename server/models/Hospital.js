@@ -1,45 +1,60 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/db');
 
-const hospitalSchema = new mongoose.Schema({
+const Hospital = sequelize.define('Hospital', {
+  _id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true,
-    unique: true
+    type: DataTypes.UUID,
+    allowNull: false,
+    unique: true,
   },
   facilityName: {
-    type: String,
-    required: [true, 'Facility name is required']
+    type: DataTypes.STRING,
+    allowNull: false,
   },
   facilityType: {
-    type: String,
-    enum: ['Hospital', 'Clinic', 'Blood Bank', 'Health Centre']
+    type: DataTypes.STRING,
+    allowNull: true,
+    validate: {
+      isIn: [['Hospital', 'Clinic', 'Blood Bank', 'Health Centre']],
+    },
   },
   address: {
-    type: String,
-    required: [true, 'Address is required']
+    type: DataTypes.STRING,
+    allowNull: false,
   },
   state: {
-    type: String,
-    required: [true, 'State is required']
+    type: DataTypes.STRING,
+    allowNull: false,
   },
   lga: {
-    type: String
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   phone: {
-    type: String
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   contactPersonName: {
-    type: String
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   coordinates: {
-    latitude: { type: Number },
-    longitude: { type: Number }
+    type: DataTypes.JSON, // { latitude, longitude }
+    allowNull: true,
   },
   createdAt: {
-    type: Date,
-    default: Date.now
-  }
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+  },
 });
 
-module.exports = mongoose.model('Hospital', hospitalSchema);
+Hospital.prototype.toObject = function () {
+  return this.get({ plain: true });
+};
+
+module.exports = Hospital;

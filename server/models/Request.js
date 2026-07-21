@@ -1,62 +1,76 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/db');
 
-const requestSchema = new mongoose.Schema({
+const Request = sequelize.define('Request', {
+  _id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
   hospitalId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital',
-    required: true
+    type: DataTypes.UUID,
+    allowNull: false,
   },
   bloodGroup: {
-    type: String,
-    enum: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
-    required: [true, 'Blood group is required']
+    type: DataTypes.STRING,
+    allowNull: false,
+    validate: {
+      isIn: [['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']],
+    },
   },
   unitsRequired: {
-    type: Number,
-    required: [true, 'Units required is required'],
-    min: [1, 'At least 1 unit is required']
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    validate: {
+      min: 1,
+    },
   },
   urgencyLevel: {
-    type: String,
-    enum: ['Routine', 'Urgent', 'Critical'],
-    default: 'Routine'
+    type: DataTypes.STRING,
+    defaultValue: 'Routine',
+    validate: {
+      isIn: [['Routine', 'Urgent', 'Critical']],
+    },
   },
   status: {
-    type: String,
-    enum: ['submitted', 'fulfilling', 'fulfilled', 'sos_dispatched', 'pending_donation', 'unfulfilled', 'cancelled'],
-    default: 'submitted'
+    type: DataTypes.STRING,
+    defaultValue: 'submitted',
+    validate: {
+      isIn: [['submitted', 'fulfilling', 'fulfilled', 'sos_dispatched', 'pending_donation', 'unfulfilled', 'cancelled']],
+    },
   },
-  reservedUnits: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'BloodUnit'
-  }],
-  alertedDonors: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Donor'
-  }],
-  acceptedDonors: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Donor'
-  }],
+  reservedUnits: {
+    type: DataTypes.JSON, // Array of BloodUnit UUIDs
+    defaultValue: [],
+  },
+  alertedDonors: {
+    type: DataTypes.JSON, // Array of Donor UUIDs
+    defaultValue: [],
+  },
+  acceptedDonors: {
+    type: DataTypes.JSON, // Array of Donor UUIDs
+    defaultValue: [],
+  },
   fulfilledAt: {
-    type: Date
+    type: DataTypes.DATE,
+    allowNull: true,
   },
   notes: {
-    type: String
+    type: DataTypes.TEXT,
+    allowNull: true,
   },
   createdAt: {
-    type: Date,
-    default: Date.now
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
   },
   updatedAt: {
-    type: Date,
-    default: Date.now
-  }
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+  },
 });
 
-// Update updatedAt on save
-requestSchema.pre('save', function () {
-  this.updatedAt = Date.now();
-});
+Request.prototype.toObject = function () {
+  return this.get({ plain: true });
+};
 
-module.exports = mongoose.model('Request', requestSchema);
+module.exports = Request;

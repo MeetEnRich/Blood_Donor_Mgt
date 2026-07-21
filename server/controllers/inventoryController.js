@@ -1,5 +1,8 @@
 const BloodUnit = require('../models/BloodUnit');
+const Donor = require('../models/Donor');
+const Hospital = require('../models/Hospital');
 const { generateUnitCode } = require('../utils/generateUnitCode');
+const { Op } = require('sequelize');
 
 /**
  * Get all blood units (Admin/Hospital).
@@ -15,31 +18,39 @@ const getAllUnits = async (req, res) => {
     if (status) filter.status = status;
 
     if (req.user.role === 'hospital') {
-      const Hospital = require('../models/Hospital');
-      const hospital = await Hospital.findOne({ userId: req.user.userId });
+      const hospital = await Hospital.findOne({ where: { userId: req.user.userId } });
       if (hospital) {
         filter.facilityId = hospital._id;
       }
     }
 
     if (startDate || endDate) {
-      filter.collectionDate = {};
-      if (startDate) filter.collectionDate.$gte = new Date(startDate);
-      if (endDate) filter.collectionDate.$lte = new Date(endDate);
+      const colFilter = {};
+      if (startDate) colFilter[Op.gte] = new Date(startDate);
+      if (endDate) colFilter[Op.lte] = new Date(endDate);
+      filter.collectionDate = colFilter;
     }
 
-    const units = await BloodUnit.find(filter)
-      .populate('donorId', 'fullName bloodGroup')
-      .populate('facilityId', 'facilityName')
-      .skip(skip)
-      .limit(parseInt(limit))
-      .sort({ createdAt: -1 })
-      .lean();
+    const { rows: units, count: total } = await BloodUnit.findAndCountAll({
+      where: filter,
+      include: [
+        { model: Donor, as: 'donor', attributes: ['fullName', 'bloodGroup'] },
+        { model: Hospital, as: 'hospital', attributes: ['facilityName'] }
+      ],
+      offset: skip,
+      limit: parseInt(limit),
+      order: [['createdAt', 'DESC']]
+    });
 
-    const total = await BloodUnit.countDocuments(filter);
+    const mappedUnits = units.map(u => {
+      const plain = u.toObject();
+      plain.donorId = plain.donor || null;
+      plain.facilityId = plain.hospital || null;
+      return plain;
+    });
 
     res.json({
-      units,
+      units: mappedUnits,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -60,23 +71,17 @@ const getAllUnits = async (req, res) => {
 const getInventorySummary = async (req, res) => {
   try {
     const groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-
-    const summary = await BloodUnit.aggregate([
-      { $match: { status: 'available' } },
-      {
-        $group: {
-          _id: '$bloodGroup',
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    // Build a complete summary with all groups (0 for missing ones)
     const result = {};
-    groups.forEach(group => {
-      const found = summary.find(s => s._id === group);
-      result[group] = found ? found.count : 0;
-    });
+
+    await Promise.all(groups.map(async (group) => {
+      const count = await BloodUnit.count({
+        where: {
+          status: 'available',
+          bloodGroup: group
+        }
+      });
+      result[group] = count;
+    }));
 
     const totalAvailable = Object.values(result).reduce((a, b) => a + b, 0);
 
@@ -100,19 +105,32 @@ const getExpiryAlerts = async (req, res) => {
     const now = new Date();
     const alertThreshold = new Date(now.getTime() + alertDays * 24 * 60 * 60 * 1000);
 
-    const expiringUnits = await BloodUnit.find({
-      status: 'available',
-      expirationDate: { $lte: alertThreshold, $gt: now }
-    })
-      .populate('facilityId', 'facilityName')
-      .populate('donorId', 'fullName')
-      .sort({ expirationDate: 1 })
-      .lean();
+    const expiringUnits = await BloodUnit.findAll({
+      where: {
+        status: 'available',
+        expirationDate: {
+          [Op.lte]: alertThreshold,
+          [Op.gt]: now
+        }
+      },
+      include: [
+        { model: Hospital, as: 'hospital', attributes: ['facilityName'] },
+        { model: Donor, as: 'donor', attributes: ['fullName'] }
+      ],
+      order: [['expirationDate', 'ASC']]
+    });
+
+    const mappedUnits = expiringUnits.map(u => {
+      const plain = u.toObject();
+      plain.facilityId = plain.hospital || null;
+      plain.donorId = plain.donor || null;
+      return plain;
+    });
 
     res.json({
       alertDays,
-      count: expiringUnits.length,
-      units: expiringUnits
+      count: mappedUnits.length,
+      units: mappedUnits
     });
   } catch (error) {
     console.error('Get expiry alerts error:', error);
@@ -140,19 +158,17 @@ const addUnit = async (req, res) => {
       expDate = new Date(new Date(collectionDate).getTime() + 42 * 24 * 60 * 60 * 1000);
     }
 
-    const unit = new BloodUnit({
+    const unit = await BloodUnit.create({
       unitCode,
       bloodGroup,
       componentType: componentType || 'Whole Blood',
       collectionDate: new Date(collectionDate),
       expirationDate: new Date(expDate),
       status: 'available',
-      donorId,
-      facilityId,
+      donorId: donorId || null,
+      facilityId: facilityId || null,
       notes
     });
-
-    await unit.save();
 
     res.status(201).json({
       message: 'Blood unit added successfully',
@@ -181,15 +197,12 @@ const updateUnit = async (req, res) => {
       }
     });
 
-    const unit = await BloodUnit.findByIdAndUpdate(
-      req.params.id,
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
-
+    const unit = await BloodUnit.findByPk(req.params.id);
     if (!unit) {
       return res.status(404).json({ message: 'Blood unit not found' });
     }
+
+    await unit.update(updates);
 
     res.json({ message: 'Blood unit updated successfully', unit });
   } catch (error) {
@@ -204,15 +217,12 @@ const updateUnit = async (req, res) => {
  */
 const discardUnit = async (req, res) => {
   try {
-    const unit = await BloodUnit.findByIdAndUpdate(
-      req.params.id,
-      { $set: { status: 'discarded', updatedAt: new Date() } },
-      { new: true }
-    );
-
+    const unit = await BloodUnit.findByPk(req.params.id);
     if (!unit) {
       return res.status(404).json({ message: 'Blood unit not found' });
     }
+
+    await unit.update({ status: 'discarded' });
 
     res.json({ message: 'Blood unit discarded successfully', unit });
   } catch (error) {

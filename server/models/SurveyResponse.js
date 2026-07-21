@@ -1,27 +1,38 @@
-const mongoose = require('mongoose');
+const { DataTypes } = require('sequelize');
+const { sequelize } = require('../config/db');
 
-const surveyResponseSchema = new mongoose.Schema({
+const SurveyResponse = sequelize.define('SurveyResponse', {
+  _id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
   userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
+    type: DataTypes.UUID,
+    allowNull: false,
   },
   role: {
-    type: String,
-    enum: ['admin', 'hospital', 'donor']
+    type: DataTypes.STRING,
+    allowNull: false,
   },
-  responses: [{
-    type: Number,
-    min: 1,
-    max: 5
-  }],
+  responses: {
+    type: DataTypes.JSON, // array of numbers
+    allowNull: false,
+  },
   susScore: {
-    type: Number
+    type: DataTypes.FLOAT,
+    allowNull: false,
   },
   submittedAt: {
-    type: Date,
-    default: Date.now
-  }
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+  },
+}, {
+  timestamps: false,
 });
 
-module.exports = mongoose.model('SurveyResponse', surveyResponseSchema);
+SurveyResponse.prototype.toObject = function () {
+  return this.get({ plain: true });
+};
+
+module.exports = SurveyResponse;

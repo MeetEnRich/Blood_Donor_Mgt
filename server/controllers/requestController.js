@@ -1,70 +1,130 @@
 const Request = require('../models/Request');
 const BloodUnit = require('../models/BloodUnit');
 const Hospital = require('../models/Hospital');
+const Donor = require('../models/Donor');
 const { findNearestDonors } = require('../services/greedyAlgorithm');
 const { sendSOSAlert } = require('../services/fcmService');
+const { Op } = require('sequelize');
+
+/**
+ * Helper to manually populate Request relationships (since arrays are stored as JSON in SQLite)
+ */
+const populateRequestDetails = async (reqs) => {
+  const isArray = Array.isArray(reqs);
+  const list = isArray ? reqs : [reqs];
+
+  await Promise.all(list.map(async (r) => {
+    // Get plain object
+    const plain = r.toObject ? r.toObject() : (r.get ? r.get({ plain: true }) : r);
+
+    // Populate hospital
+    if (plain.hospitalId) {
+      const hospital = await Hospital.findByPk(plain.hospitalId);
+      plain.hospital = hospital ? hospital.toObject() : null;
+      plain.hospitalId = plain.hospital; // Frontend expects nested hospital object here
+    }
+
+    // Populate reservedUnits
+    if (plain.reservedUnits && plain.reservedUnits.length > 0) {
+      const units = await BloodUnit.findAll({
+        where: { _id: { [Op.in]: plain.reservedUnits } }
+      });
+      plain.reservedUnits = units.map(u => u.toObject());
+    } else {
+      plain.reservedUnits = [];
+    }
+
+    // Populate alertedDonors
+    if (plain.alertedDonors && plain.alertedDonors.length > 0) {
+      const donors = await Donor.findAll({
+        where: { _id: { [Op.in]: plain.alertedDonors } }
+      });
+      plain.alertedDonors = donors.map(d => d.toObject());
+    } else {
+      plain.alertedDonors = [];
+    }
+
+    // Populate acceptedDonors
+    if (plain.acceptedDonors && plain.acceptedDonors.length > 0) {
+      const donors = await Donor.findAll({
+        where: { _id: { [Op.in]: plain.acceptedDonors } }
+      });
+      plain.acceptedDonors = donors.map(d => d.toObject());
+    } else {
+      plain.acceptedDonors = [];
+    }
+
+    Object.assign(r, plain);
+  }));
+
+  return reqs;
+};
 
 /**
  * Submit a blood request (Hospital only).
- * Runs the fulfillment pipeline:
- *   Path A: Sufficient inventory → reserve units → fulfilled
- *   Path B: Insufficient inventory → greedy algorithm → SOS alert → sos_dispatched
  */
 const submitRequest = async (req, res) => {
   try {
     const { bloodGroup, unitsRequired, urgencyLevel, notes } = req.body;
 
     // Find the hospital profile for the current user
-    const hospital = await Hospital.findOne({ userId: req.user.userId });
+    const hospital = await Hospital.findOne({ where: { userId: req.user.userId } });
     if (!hospital) {
       return res.status(404).json({ message: 'Hospital profile not found' });
     }
 
     // Create the request
-    const request = new Request({
+    const request = await Request.create({
       hospitalId: hospital._id,
       bloodGroup,
       unitsRequired: parseInt(unitsRequired),
       urgencyLevel: urgencyLevel || 'Routine',
       notes,
-      status: 'submitted'
+      status: 'submitted',
+      reservedUnits: [],
+      alertedDonors: [],
+      acceptedDonors: []
     });
-    await request.save();
 
     // PATH A: Check inventory for available non-expired units
     const now = new Date();
-    const availableUnits = await BloodUnit.find({
-      bloodGroup,
-      status: 'available',
-      expirationDate: { $gt: now }
-    })
-      .sort({ expirationDate: 1 }) // FIFO: use oldest first
-      .limit(parseInt(unitsRequired))
-      .lean();
+    const availableUnits = await BloodUnit.findAll({
+      where: {
+        bloodGroup,
+        status: 'available',
+        expirationDate: { [Op.gt]: now }
+      },
+      order: [['expirationDate', 'ASC']], // FIFO
+      limit: parseInt(unitsRequired)
+    });
 
     if (availableUnits.length >= parseInt(unitsRequired)) {
       // Sufficient inventory — reserve units
       const unitIds = availableUnits.map(u => u._id);
 
-      await BloodUnit.updateMany(
-        { _id: { $in: unitIds } },
+      await BloodUnit.update(
         {
-          $set: {
-            status: 'reserved',
-            reservedForRequestId: request._id,
-            updatedAt: new Date()
-          }
+          status: 'reserved',
+          reservedForRequestId: request._id,
+          updatedAt: new Date()
+        },
+        {
+          where: { _id: { [Op.in]: unitIds } }
         }
       );
 
-      request.reservedUnits = unitIds;
-      request.status = 'fulfilled';
-      request.fulfilledAt = new Date();
-      await request.save();
+      await request.update({
+        reservedUnits: unitIds,
+        status: 'fulfilled',
+        fulfilledAt: new Date()
+      });
+
+      // Populate response for frontend compatibility
+      const populated = await populateRequestDetails(request);
 
       return res.status(201).json({
         message: 'Request fulfilled from inventory',
-        request,
+        request: populated,
         fulfillmentMethod: 'inventory',
         unitsReserved: unitIds.length
       });
@@ -74,34 +134,35 @@ const submitRequest = async (req, res) => {
     console.log(`⚠️ Insufficient inventory for ${bloodGroup}. Available: ${availableUnits.length}, Required: ${unitsRequired}. Triggering SOS...`);
 
     // Reserve whatever is available
+    let partialUnitIds = [];
     if (availableUnits.length > 0) {
-      const partialUnitIds = availableUnits.map(u => u._id);
-      await BloodUnit.updateMany(
-        { _id: { $in: partialUnitIds } },
+      partialUnitIds = availableUnits.map(u => u._id);
+      await BloodUnit.update(
         {
-          $set: {
-            status: 'reserved',
-            reservedForRequestId: request._id,
-            updatedAt: new Date()
-          }
+          status: 'reserved',
+          reservedForRequestId: request._id,
+          updatedAt: new Date()
+        },
+        {
+          where: { _id: { [Op.in]: partialUnitIds } }
         }
       );
-      request.reservedUnits = partialUnitIds;
     }
 
     // Find nearest eligible donors using greedy algorithm
     const nearestDonors = await findNearestDonors(request);
 
     if (nearestDonors.length > 0) {
-      // Collect FCM tokens and donor IDs
       const donorIds = nearestDonors.map(d => d._id);
       const fcmTokens = nearestDonors
         .filter(d => d.fcmToken)
         .map(d => d.fcmToken);
 
-      request.alertedDonors = donorIds;
-      request.status = 'sos_dispatched';
-      await request.save();
+      await request.update({
+        reservedUnits: partialUnitIds,
+        alertedDonors: donorIds,
+        status: 'sos_dispatched'
+      });
 
       // Send SOS alerts
       if (fcmTokens.length > 0) {
@@ -113,9 +174,11 @@ const submitRequest = async (req, res) => {
         });
       }
 
+      const populated = await populateRequestDetails(request);
+
       return res.status(201).json({
         message: 'Insufficient inventory. SOS alert dispatched to nearby donors.',
-        request,
+        request: populated,
         fulfillmentMethod: 'sos',
         donorsAlerted: nearestDonors.length,
         partialUnitsReserved: availableUnits.length
@@ -123,12 +186,16 @@ const submitRequest = async (req, res) => {
     }
 
     // No donors found either
-    request.status = 'unfulfilled';
-    await request.save();
+    await request.update({
+      reservedUnits: partialUnitIds,
+      status: 'unfulfilled'
+    });
+
+    const populated = await populateRequestDetails(request);
 
     return res.status(201).json({
       message: 'Request created but no inventory or eligible donors found.',
-      request,
+      request: populated,
       fulfillmentMethod: 'none'
     });
   } catch (error) {
@@ -139,7 +206,6 @@ const submitRequest = async (req, res) => {
 
 /**
  * Get all requests (Admin only).
- * Paginated, filterable.
  */
 const getAllRequests = async (req, res) => {
   try {
@@ -150,20 +216,18 @@ const getAllRequests = async (req, res) => {
     if (status) filter.status = status;
     if (bloodGroup) filter.bloodGroup = bloodGroup;
 
-    const requests = await Request.find(filter)
-      .populate('hospitalId', 'facilityName address')
-      .populate('reservedUnits', 'unitCode bloodGroup status')
-      .populate('alertedDonors', 'fullName bloodGroup phone')
-      .populate('acceptedDonors', 'fullName bloodGroup phone')
-      .skip(skip)
-      .limit(parseInt(limit))
-      .sort({ createdAt: -1 })
-      .lean();
+    const { rows: requests, count: total } = await Request.findAndCountAll({
+      where: filter,
+      offset: skip,
+      limit: parseInt(limit),
+      order: [['createdAt', 'DESC']]
+    });
 
-    const total = await Request.countDocuments(filter);
+    const mapped = requests.map(r => r.toObject());
+    await populateRequestDetails(mapped);
 
     res.json({
-      requests,
+      requests: mapped,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -182,7 +246,7 @@ const getAllRequests = async (req, res) => {
  */
 const getMyRequests = async (req, res) => {
   try {
-    const hospital = await Hospital.findOne({ userId: req.user.userId });
+    const hospital = await Hospital.findOne({ where: { userId: req.user.userId } });
     if (!hospital) {
       return res.status(404).json({ message: 'Hospital profile not found' });
     }
@@ -193,19 +257,18 @@ const getMyRequests = async (req, res) => {
     const filter = { hospitalId: hospital._id };
     if (status) filter.status = status;
 
-    const requests = await Request.find(filter)
-      .populate('reservedUnits', 'unitCode bloodGroup status')
-      .populate('alertedDonors', 'fullName bloodGroup')
-      .populate('acceptedDonors', 'fullName bloodGroup')
-      .skip(skip)
-      .limit(parseInt(limit))
-      .sort({ createdAt: -1 })
-      .lean();
+    const { rows: requests, count: total } = await Request.findAndCountAll({
+      where: filter,
+      offset: skip,
+      limit: parseInt(limit),
+      order: [['createdAt', 'DESC']]
+    });
 
-    const total = await Request.countDocuments(filter);
+    const mapped = requests.map(r => r.toObject());
+    await populateRequestDetails(mapped);
 
     res.json({
-      requests,
+      requests: mapped,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -224,25 +287,23 @@ const getMyRequests = async (req, res) => {
  */
 const getRequestById = async (req, res) => {
   try {
-    const request = await Request.findById(req.params.id)
-      .populate('hospitalId', 'facilityName address phone')
-      .populate('reservedUnits', 'unitCode bloodGroup status componentType')
-      .populate('alertedDonors', 'fullName bloodGroup phone')
-      .populate('acceptedDonors', 'fullName bloodGroup phone');
-
+    const request = await Request.findByPk(req.params.id);
     if (!request) {
       return res.status(404).json({ message: 'Request not found' });
     }
 
-    // If hospital role, verify ownership
+    const mapped = request.toObject();
+    await populateRequestDetails(mapped);
+
+    // If hospital role, verify ownership (use straight string comparison)
     if (req.user.role === 'hospital') {
-      const hospital = await Hospital.findOne({ userId: req.user.userId });
-      if (!hospital || !request.hospitalId._id.equals(hospital._id)) {
+      const hospital = await Hospital.findOne({ where: { userId: req.user.userId } });
+      if (!hospital || mapped.hospital._id !== hospital._id) {
         return res.status(403).json({ message: 'Access denied: not your request' });
       }
     }
 
-    res.json({ request });
+    res.json({ request: mapped });
   } catch (error) {
     console.error('Get request by ID error:', error);
     res.status(500).json({ message: 'Failed to fetch request', error: error.message });
@@ -251,21 +312,20 @@ const getRequestById = async (req, res) => {
 
 /**
  * Cancel a request (Hospital only).
- * Releases any reserved units.
  */
 const cancelRequest = async (req, res) => {
   try {
-    const hospital = await Hospital.findOne({ userId: req.user.userId });
+    const hospital = await Hospital.findOne({ where: { userId: req.user.userId } });
     if (!hospital) {
       return res.status(404).json({ message: 'Hospital profile not found' });
     }
 
-    const request = await Request.findById(req.params.id);
+    const request = await Request.findByPk(req.params.id);
     if (!request) {
       return res.status(404).json({ message: 'Request not found' });
     }
 
-    if (!request.hospitalId.equals(hospital._id)) {
+    if (request.hospitalId !== hospital._id) {
       return res.status(403).json({ message: 'Access denied: not your request' });
     }
 
@@ -274,23 +334,25 @@ const cancelRequest = async (req, res) => {
     }
 
     // Release reserved units
-    if (request.reservedUnits && request.reservedUnits.length > 0) {
-      await BloodUnit.updateMany(
-        { _id: { $in: request.reservedUnits } },
+    const reservedUnits = request.reservedUnits || [];
+    if (reservedUnits.length > 0) {
+      await BloodUnit.update(
         {
-          $set: {
-            status: 'available',
-            reservedForRequestId: null,
-            updatedAt: new Date()
-          }
+          status: 'available',
+          reservedForRequestId: null,
+          updatedAt: new Date()
+        },
+        {
+          where: { _id: { [Op.in]: reservedUnits } }
         }
       );
     }
 
-    request.status = 'cancelled';
-    await request.save();
+    await request.update({ status: 'cancelled' });
 
-    res.json({ message: 'Request cancelled and reserved units released', request });
+    const populated = await populateRequestDetails(request);
+
+    res.json({ message: 'Request cancelled and reserved units released', request: populated });
   } catch (error) {
     console.error('Cancel request error:', error);
     res.status(500).json({ message: 'Failed to cancel request', error: error.message });
@@ -302,38 +364,42 @@ const cancelRequest = async (req, res) => {
  */
 const markDelivered = async (req, res) => {
   try {
-    const hospital = await Hospital.findOne({ userId: req.user.userId });
+    const hospital = await Hospital.findOne({ where: { userId: req.user.userId } });
     if (!hospital) {
       return res.status(404).json({ message: 'Hospital profile not found' });
     }
 
-    const request = await Request.findById(req.params.id);
+    const request = await Request.findByPk(req.params.id);
     if (!request) {
       return res.status(404).json({ message: 'Request not found' });
     }
 
-    if (!request.hospitalId.equals(hospital._id)) {
+    if (request.hospitalId !== hospital._id) {
       return res.status(403).json({ message: 'Access denied: not your request' });
     }
 
     // Update reserved units to delivered
-    if (request.reservedUnits && request.reservedUnits.length > 0) {
-      await BloodUnit.updateMany(
-        { _id: { $in: request.reservedUnits } },
+    const reservedUnits = request.reservedUnits || [];
+    if (reservedUnits.length > 0) {
+      await BloodUnit.update(
         {
-          $set: {
-            status: 'delivered',
-            updatedAt: new Date()
-          }
+          status: 'delivered',
+          updatedAt: new Date()
+        },
+        {
+          where: { _id: { [Op.in]: reservedUnits } }
         }
       );
     }
 
-    request.status = 'fulfilled';
-    request.fulfilledAt = new Date();
-    await request.save();
+    await request.update({
+      status: 'fulfilled',
+      fulfilledAt: new Date()
+    });
 
-    res.json({ message: 'Units marked as delivered', request });
+    const populated = await populateRequestDetails(request);
+
+    res.json({ message: 'Units marked as delivered', request: populated });
   } catch (error) {
     console.error('Mark delivered error:', error);
     res.status(500).json({ message: 'Failed to mark as delivered', error: error.message });
@@ -345,24 +411,29 @@ const markDelivered = async (req, res) => {
  */
 const getHospitalStats = async (req, res) => {
   try {
-    const Hospital = require('../models/Hospital');
-    const hospital = await Hospital.findOne({ userId: req.user.userId });
+    const hospital = await Hospital.findOne({ where: { userId: req.user.userId } });
     if (!hospital) {
       return res.status(404).json({ message: 'Hospital profile not found' });
     }
 
     const [activeRequests, fulfilledRequests, availableNetworkUnits] = await Promise.all([
-      Request.countDocuments({ 
-        hospitalId: hospital._id, 
-        status: { $in: ['submitted', 'fulfilling', 'sos_dispatched', 'pending_donation'] } 
+      Request.count({
+        where: {
+          hospitalId: hospital._id,
+          status: { [Op.in]: ['submitted', 'fulfilling', 'sos_dispatched', 'pending_donation'] }
+        }
       }),
-      Request.countDocuments({ 
-        hospitalId: hospital._id, 
-        status: 'fulfilled' 
+      Request.count({
+        where: {
+          hospitalId: hospital._id,
+          status: 'fulfilled'
+        }
       }),
-      BloodUnit.countDocuments({ 
-        status: 'available', 
-        expirationDate: { $gt: new Date() } 
+      BloodUnit.count({
+        where: {
+          status: 'available',
+          expirationDate: { [Op.gt]: new Date() }
+        }
       })
     ]);
 

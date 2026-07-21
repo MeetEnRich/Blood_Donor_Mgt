@@ -24,7 +24,7 @@ const submitSurvey = async (req, res) => {
     }
 
     // Check if user already submitted
-    const existing = await SurveyResponse.findOne({ userId: req.user.userId });
+    const existing = await SurveyResponse.findOne({ where: { userId: req.user.userId } });
     if (existing) {
       return res.status(400).json({ message: 'You have already submitted a survey' });
     }
@@ -32,14 +32,12 @@ const submitSurvey = async (req, res) => {
     // Calculate SUS score
     const susScore = calculateSUS(responses);
 
-    const survey = new SurveyResponse({
+    const survey = await SurveyResponse.create({
       userId: req.user.userId,
       role: req.user.role,
       responses,
       susScore
     });
-
-    await survey.save();
 
     res.status(201).json({
       message: 'Survey submitted successfully',
@@ -57,7 +55,7 @@ const submitSurvey = async (req, res) => {
  */
 const checkMySurvey = async (req, res) => {
   try {
-    const survey = await SurveyResponse.findOne({ userId: req.user.userId });
+    const survey = await SurveyResponse.findOne({ where: { userId: req.user.userId } });
 
     res.json({
       hasSubmitted: !!survey,

@@ -4,6 +4,7 @@ const Hospital = require('../models/Hospital');
 const BloodUnit = require('../models/BloodUnit');
 const Request = require('../models/Request');
 const SurveyResponse = require('../models/SurveyResponse');
+const { Op } = require('sequelize');
 
 /**
  * Get dashboard statistics (Admin only).
@@ -23,14 +24,26 @@ const getStats = async (req, res) => {
       requestsToday,
       fulfilledToday
     ] = await Promise.all([
-      Donor.countDocuments(),
-      Hospital.countDocuments(),
-      BloodUnit.countDocuments(),
-      BloodUnit.countDocuments({ status: 'available' }),
-      Request.countDocuments({ createdAt: { $gte: today, $lt: tomorrow } }),
-      Request.countDocuments({
-        status: 'fulfilled',
-        fulfilledAt: { $gte: today, $lt: tomorrow }
+      Donor.count(),
+      Hospital.count(),
+      BloodUnit.count(),
+      BloodUnit.count({ where: { status: 'available' } }),
+      Request.count({
+        where: {
+          createdAt: {
+            [Op.gte]: today,
+            [Op.lt]: tomorrow
+          }
+        }
+      }),
+      Request.count({
+        where: {
+          status: 'fulfilled',
+          fulfilledAt: {
+            [Op.gte]: today,
+            [Op.lt]: tomorrow
+          }
+        }
       })
     ]);
 
@@ -56,17 +69,21 @@ const getAllHospitals = async (req, res) => {
     const { page = 1, limit = 20 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    const hospitals = await Hospital.find()
-      .populate('userId', 'email status')
-      .skip(skip)
-      .limit(parseInt(limit))
-      .sort({ createdAt: -1 })
-      .lean();
+    const { rows: hospitals, count: total } = await Hospital.findAndCountAll({
+      include: [{ model: User, as: 'user', attributes: ['email', 'status'] }],
+      offset: skip,
+      limit: parseInt(limit),
+      order: [['createdAt', 'DESC']]
+    });
 
-    const total = await Hospital.countDocuments();
+    const mappedHospitals = hospitals.map(h => {
+      const plain = h.toObject();
+      plain.userId = plain.user; // Frontend compatibility for populated userId
+      return plain;
+    });
 
     res.json({
-      hospitals,
+      hospitals: mappedHospitals,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -85,12 +102,12 @@ const getAllHospitals = async (req, res) => {
  */
 const approveHospital = async (req, res) => {
   try {
-    const hospital = await Hospital.findById(req.params.id);
+    const hospital = await Hospital.findByPk(req.params.id);
     if (!hospital) {
       return res.status(404).json({ message: 'Hospital not found' });
     }
 
-    await User.findByIdAndUpdate(hospital.userId, { status: 'approved' });
+    await User.update({ status: 'approved' }, { where: { _id: hospital.userId } });
 
     res.json({ message: 'Hospital approved successfully' });
   } catch (error) {
@@ -104,12 +121,12 @@ const approveHospital = async (req, res) => {
  */
 const suspendHospital = async (req, res) => {
   try {
-    const hospital = await Hospital.findById(req.params.id);
+    const hospital = await Hospital.findByPk(req.params.id);
     if (!hospital) {
       return res.status(404).json({ message: 'Hospital not found' });
     }
 
-    await User.findByIdAndUpdate(hospital.userId, { status: 'suspended' });
+    await User.update({ status: 'suspended' }, { where: { _id: hospital.userId } });
 
     res.json({ message: 'Hospital suspended successfully' });
   } catch (error) {
@@ -120,7 +137,6 @@ const suspendHospital = async (req, res) => {
 
 /**
  * Fulfillment report (Admin only).
- * % fulfilled from inventory vs SOS. Monthly breakdown.
  */
 const getFulfillmentReport = async (req, res) => {
   try {
@@ -128,18 +144,25 @@ const getFulfillmentReport = async (req, res) => {
     const startOfYear = new Date(`${year}-01-01`);
     const endOfYear = new Date(`${parseInt(year) + 1}-01-01`);
 
-    const requests = await Request.find({
-      createdAt: { $gte: startOfYear, $lt: endOfYear }
-    }).lean();
+    const requests = await Request.findAll({
+      where: {
+        createdAt: {
+          [Op.gte]: startOfYear,
+          [Op.lt]: endOfYear
+        }
+      }
+    });
+
+    const plainRequests = requests.map(r => r.toObject());
 
     // Overall stats
-    const total = requests.length;
-    const fulfilled = requests.filter(r => r.status === 'fulfilled');
-    const sosDispatched = requests.filter(r =>
+    const total = plainRequests.length;
+    const fulfilled = plainRequests.filter(r => r.status === 'fulfilled');
+    const sosDispatched = plainRequests.filter(r =>
       ['sos_dispatched', 'pending_donation'].includes(r.status)
     );
     const inventoryFulfilled = fulfilled.filter(r =>
-      r.reservedUnits && r.reservedUnits.length > 0 && r.alertedDonors.length === 0
+      r.reservedUnits && r.reservedUnits.length > 0 && (!r.alertedDonors || r.alertedDonors.length === 0)
     );
     const sosFulfilled = fulfilled.filter(r =>
       r.alertedDonors && r.alertedDonors.length > 0
@@ -149,7 +172,7 @@ const getFulfillmentReport = async (req, res) => {
     const monthly = {};
     for (let m = 0; m < 12; m++) {
       const monthName = new Date(2026, m).toLocaleString('default', { month: 'short' });
-      const monthRequests = requests.filter(r => new Date(r.createdAt).getMonth() === m);
+      const monthRequests = plainRequests.filter(r => new Date(r.createdAt).getMonth() === m);
       const monthFulfilled = monthRequests.filter(r => r.status === 'fulfilled');
       monthly[monthName] = {
         total: monthRequests.length,
@@ -182,44 +205,39 @@ const getFulfillmentReport = async (req, res) => {
 
 /**
  * Donor activity report (Admin only).
- * Most active donors, dormant donors (180+ days no donation).
  */
 const getDonorActivityReport = async (req, res) => {
   try {
     const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
 
-    // Most active donors (by donation count)
-    const mostActive = await Donor.find({
-      'donationHistory.0': { $exists: true }
-    })
-      .sort({ 'donationHistory': -1 })
-      .limit(10)
-      .select('fullName bloodGroup donationHistory lastDonationDate')
-      .lean();
+    const allDonors = await Donor.findAll();
+    const plainDonors = allDonors.map(d => d.toObject());
 
-    // Sort by donation count
-    mostActive.sort((a, b) =>
-      (b.donationHistory?.length || 0) - (a.donationHistory?.length || 0)
-    );
+    // Most active donors (by donation count)
+    const mostActive = plainDonors
+      .filter(d => d.donationHistory && d.donationHistory.length > 0)
+      .sort((a, b) => b.donationHistory.length - a.donationHistory.length)
+      .slice(0, 10);
 
     // Dormant donors (180+ days since last donation or never donated)
-    const dormantDonors = await Donor.find({
-      $or: [
-        { lastDonationDate: { $lte: sixMonthsAgo } },
-        { lastDonationDate: null, createdAt: { $lte: sixMonthsAgo } }
-      ]
-    })
-      .select('fullName bloodGroup lastDonationDate phone')
-      .lean();
+    const dormantDonors = await Donor.findAll({
+      where: {
+        [Op.or]: [
+          { lastDonationDate: { [Op.lte]: sixMonthsAgo } },
+          {
+            lastDonationDate: null,
+            createdAt: { [Op.lte]: sixMonthsAgo }
+          }
+        ]
+      }
+    });
 
-    // Total donation count
-    const allDonors = await Donor.find().lean();
-    const totalDonations = allDonors.reduce(
+    const totalDonations = plainDonors.reduce(
       (sum, d) => sum + (d.donationHistory?.length || 0), 0
     );
 
     res.json({
-      totalDonors: allDonors.length,
+      totalDonors: plainDonors.length,
       totalDonations,
       mostActive: mostActive.map(d => ({
         fullName: d.fullName,
@@ -229,7 +247,7 @@ const getDonorActivityReport = async (req, res) => {
       })),
       dormantDonors: {
         count: dormantDonors.length,
-        donors: dormantDonors
+        donors: dormantDonors.map(d => d.toObject())
       }
     });
   } catch (error) {
@@ -240,7 +258,6 @@ const getDonorActivityReport = async (req, res) => {
 
 /**
  * Inventory report (Admin only).
- * Units added vs used vs expired per month.
  */
 const getInventoryReport = async (req, res) => {
   try {
@@ -248,14 +265,21 @@ const getInventoryReport = async (req, res) => {
     const startOfYear = new Date(`${year}-01-01`);
     const endOfYear = new Date(`${parseInt(year) + 1}-01-01`);
 
-    const units = await BloodUnit.find({
-      createdAt: { $gte: startOfYear, $lt: endOfYear }
-    }).lean();
+    const units = await BloodUnit.findAll({
+      where: {
+        createdAt: {
+          [Op.gte]: startOfYear,
+          [Op.lt]: endOfYear
+        }
+      }
+    });
+
+    const plainUnits = units.map(u => u.toObject());
 
     const monthly = {};
     for (let m = 0; m < 12; m++) {
       const monthName = new Date(2026, m).toLocaleString('default', { month: 'short' });
-      const monthUnits = units.filter(u => new Date(u.createdAt).getMonth() === m);
+      const monthUnits = plainUnits.filter(u => new Date(u.createdAt).getMonth() === m);
 
       monthly[monthName] = {
         added: monthUnits.length,
@@ -268,12 +292,12 @@ const getInventoryReport = async (req, res) => {
 
     // Overall totals
     const overall = {
-      total: units.length,
-      available: units.filter(u => u.status === 'available').length,
-      reserved: units.filter(u => u.status === 'reserved').length,
-      delivered: units.filter(u => u.status === 'delivered').length,
-      expired: units.filter(u => u.status === 'expired').length,
-      discarded: units.filter(u => u.status === 'discarded').length
+      total: plainUnits.length,
+      available: plainUnits.filter(u => u.status === 'available').length,
+      reserved: plainUnits.filter(u => u.status === 'reserved').length,
+      delivered: plainUnits.filter(u => u.status === 'delivered').length,
+      expired: plainUnits.filter(u => u.status === 'expired').length,
+      discarded: plainUnits.filter(u => u.status === 'discarded').length
     };
 
     res.json({ year: parseInt(year), overall, monthly });
@@ -285,13 +309,13 @@ const getInventoryReport = async (req, res) => {
 
 /**
  * SUS report (Admin only).
- * Average SUS score across all users, broken down by role.
  */
 const getSUSReport = async (req, res) => {
   try {
-    const allSurveys = await SurveyResponse.find().lean();
+    const allSurveys = await SurveyResponse.findAll();
+    const plainSurveys = allSurveys.map(s => s.toObject());
 
-    if (allSurveys.length === 0) {
+    if (plainSurveys.length === 0) {
       return res.json({
         totalResponses: 0,
         averageSUSScore: 0,
@@ -299,13 +323,13 @@ const getSUSReport = async (req, res) => {
       });
     }
 
-    const overallAvg = allSurveys.reduce((sum, s) => sum + (s.susScore || 0), 0) / allSurveys.length;
+    const overallAvg = plainSurveys.reduce((sum, s) => sum + (s.susScore || 0), 0) / plainSurveys.length;
 
     // Breakdown by role
     const roles = ['admin', 'hospital', 'donor'];
     const byRole = {};
     roles.forEach(role => {
-      const roleSurveys = allSurveys.filter(s => s.role === role);
+      const roleSurveys = plainSurveys.filter(s => s.role === role);
       byRole[role] = {
         count: roleSurveys.length,
         averageSUSScore: roleSurveys.length > 0
@@ -315,7 +339,7 @@ const getSUSReport = async (req, res) => {
     });
 
     res.json({
-      totalResponses: allSurveys.length,
+      totalResponses: plainSurveys.length,
       averageSUSScore: overallAvg.toFixed(1),
       byRole
     });

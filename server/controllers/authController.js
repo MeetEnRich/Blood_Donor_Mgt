@@ -12,23 +12,22 @@ const register = async (req, res) => {
     const { email, password, role, ...profileData } = req.body;
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ where: { email } });
     if (existingUser) {
       return res.status(400).json({ message: 'Email already registered' });
     }
 
     // Create user with pending status
-    const user = new User({
+    const user = await User.create({
       email,
       password,
       role,
       status: 'pending'
     });
-    await user.save();
 
     // Create role-specific profile
     if (role === 'donor') {
-      const donor = new Donor({
+      await Donor.create({
         userId: user._id,
         fullName: profileData.fullName || '',
         dateOfBirth: profileData.dateOfBirth,
@@ -42,9 +41,8 @@ const register = async (req, res) => {
         coordinates: profileData.coordinates,
         medicalHistory: profileData.medicalHistory
       });
-      await donor.save();
     } else if (role === 'hospital') {
-      const hospital = new Hospital({
+      await Hospital.create({
         userId: user._id,
         facilityName: profileData.facilityName || '',
         facilityType: profileData.facilityType,
@@ -55,7 +53,6 @@ const register = async (req, res) => {
         contactPersonName: profileData.contactPersonName,
         coordinates: profileData.coordinates
       });
-      await hospital.save();
     }
 
     // Return user without password
@@ -68,8 +65,7 @@ const register = async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    // Cleanup on failure
-    if (error.code === 11000) {
+    if (error.name === 'SequelizeUniqueConstraintError') {
       return res.status(400).json({ message: 'Email already registered' });
     }
     res.status(500).json({ message: 'Registration failed', error: error.message });
@@ -84,8 +80,8 @@ const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Find user with password field
-    const user = await User.findOne({ email }).select('+password');
+    // Find user (password is retrieved by default in Sequelize)
+    const user = await User.findOne({ where: { email } });
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
@@ -132,7 +128,7 @@ const login = async (req, res) => {
  */
 const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId);
+    const user = await User.findByPk(req.user.userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -141,9 +137,9 @@ const getMe = async (req, res) => {
     let profile = null;
 
     if (user.role === 'donor') {
-      profile = await Donor.findOne({ userId: user._id });
+      profile = await Donor.findOne({ where: { userId: user._id } });
     } else if (user.role === 'hospital') {
-      profile = await Hospital.findOne({ userId: user._id });
+      profile = await Hospital.findOne({ where: { userId: user._id } });
     }
 
     res.json({
