@@ -11,7 +11,8 @@ const {
   recordDonation,
   checkEligibility,
   getMyAlerts,
-  respondToAlert
+  respondToAlert,
+  deleteDonor
 } = require('../controllers/donorController');
 const { protect } = require('../middleware/authMiddleware');
 const { restrictTo } = require('../middleware/roleMiddleware');
@@ -32,5 +33,6 @@ router.put('/:id/approve', protect, restrictTo('admin'), approveDonor);
 router.put('/:id/suspend', protect, restrictTo('admin'), suspendDonor);
 router.post('/:id/donation', protect, restrictTo('admin', 'hospital'), validateDonation, recordDonation);
 router.get('/:id/eligibility', protect, restrictTo('admin'), checkEligibility);
+router.delete('/:id', protect, restrictTo('admin'), deleteDonor);
 
 module.exports = router;

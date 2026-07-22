@@ -49,8 +49,8 @@ const Register = () => {
     setError('');
     setLoading(true);
     try {
-      const endpoint = role === 'donor' ? '/auth/register/donor' : '/auth/register/hospital';
-      await api.post(endpoint, formData);
+      const endpoint = '/auth/register';
+      await api.post(endpoint, { ...formData, role });
       setSuccess(true);
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed.');
@@ -147,8 +147,10 @@ const Register = () => {
                       <label className="form-label">Facility Type</label>
                       <select name="facilityType" className="form-control" onChange={handleChange} required>
                         <option value="">Select</option>
-                        <option value="Public">Public</option>
-                        <option value="Private">Private</option>
+                        <option value="Hospital">Hospital</option>
+                        <option value="Clinic">Clinic</option>
+                        <option value="Blood Bank">Blood Bank</option>
+                        <option value="Health Centre">Health Centre</option>
                       </select>
                     </div>
                     <div className="form-group">

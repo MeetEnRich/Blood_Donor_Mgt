@@ -79,6 +79,7 @@ const getAllHospitals = async (req, res) => {
     const mappedHospitals = hospitals.map(h => {
       const plain = h.toObject();
       plain.userId = plain.user; // Frontend compatibility for populated userId
+      plain.status = plain.user?.status || 'pending';
       return plain;
     });
 
@@ -349,6 +350,26 @@ const getSUSReport = async (req, res) => {
   }
 };
 
+/**
+ * Delete a hospital account (Admin only).
+ */
+const deleteHospital = async (req, res) => {
+  try {
+    const hospital = await Hospital.findByPk(req.params.id);
+    if (!hospital) {
+      return res.status(404).json({ message: 'Hospital not found' });
+    }
+
+    // Delete parent User (cascades to Hospital)
+    await User.destroy({ where: { _id: hospital.userId } });
+
+    res.json({ message: 'Hospital account deleted successfully' });
+  } catch (error) {
+    console.error('Delete hospital error:', error);
+    res.status(500).json({ message: 'Failed to delete hospital', error: error.message });
+  }
+};
+
 module.exports = {
   getStats,
   getAllHospitals,
@@ -357,5 +378,6 @@ module.exports = {
   getFulfillmentReport,
   getDonorActivityReport,
   getInventoryReport,
-  getSUSReport
+  getSUSReport,
+  deleteHospital
 };

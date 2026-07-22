@@ -20,13 +20,8 @@ const ManageHospitals = () => {
 
   const fetchHospitals = async () => {
     try {
-      const res = await api.get('/admin/users?role=hospital').catch(() => ({ 
-        data: [
-          { _id: '1', facilityName: 'Lagos State Hospital', facilityType: 'Public', state: 'Lagos', status: 'approved' },
-          { _id: '2', facilityName: 'Abuja Central Clinic', facilityType: 'Private', state: 'FCT', status: 'pending' }
-        ] 
-      }));
-      setHospitals(res.data);
+      const res = await api.get('/admin/hospitals');
+      setHospitals(res.data.hospitals || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -36,10 +31,22 @@ const ManageHospitals = () => {
 
   const updateStatus = async (id, status) => {
     try {
-      await api.patch(`/admin/users/${id}/status`, { status });
+      const action = status === 'approved' ? 'approve' : 'suspend';
+      await api.put(`/admin/hospitals/${id}/${action}`);
       fetchHospitals();
     } catch (err) {
       alert('Failed to update status');
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm('Are you sure you want to delete this hospital account? This action cannot be undone.')) {
+      try {
+        await api.delete(`/admin/hospitals/${id}`);
+        fetchHospitals();
+      } catch (err) {
+        alert(err.response?.data?.message || 'Failed to delete account');
+      }
     }
   };
 
@@ -121,8 +128,9 @@ const ManageHospitals = () => {
                         <button className="btn btn-sm btn-primary" onClick={() => updateStatus(hospital._id, 'approved')} style={{ marginRight: '0.5rem' }}>Approve</button>
                       )}
                       {hospital.status === 'approved' && (
-                        <button className="btn btn-sm btn-danger" onClick={() => updateStatus(hospital._id, 'suspended')}>Suspend</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => updateStatus(hospital._id, 'suspended')} style={{ marginRight: '0.5rem' }}>Suspend</button>
                       )}
+                      <button className="btn btn-sm btn-outline" onClick={() => handleDelete(hospital._id)} style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>Delete</button>
                     </td>
                   </tr>
                 ))

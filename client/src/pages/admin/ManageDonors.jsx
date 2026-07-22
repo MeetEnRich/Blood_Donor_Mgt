@@ -22,13 +22,8 @@ const ManageDonors = () => {
 
   const fetchDonors = async () => {
     try {
-      const res = await api.get('/admin/users?role=donor').catch(() => ({ 
-        data: [
-          { _id: '1', fullName: 'John Doe', bloodGroup: 'O+', phone: '08012345678', status: 'approved', lastDonationDate: null },
-          { _id: '2', fullName: 'Jane Smith', bloodGroup: 'A-', phone: '08087654321', status: 'pending', lastDonationDate: new Date().toISOString() }
-        ] 
-      }));
-      setDonors(res.data);
+      const res = await api.get('/donors');
+      setDonors(res.data.donors || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -38,10 +33,22 @@ const ManageDonors = () => {
 
   const updateStatus = async (id, status) => {
     try {
-      await api.patch(`/admin/users/${id}/status`, { status });
+      const action = status === 'approved' ? 'approve' : 'suspend';
+      await api.put(`/donors/${id}/${action}`);
       fetchDonors();
     } catch (err) {
       alert('Failed to update status');
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (window.confirm('Are you sure you want to delete this donor account? This action cannot be undone.')) {
+      try {
+        await api.delete(`/donors/${id}`);
+        fetchDonors();
+      } catch (err) {
+        alert(err.response?.data?.message || 'Failed to delete account');
+      }
     }
   };
 
@@ -122,8 +129,9 @@ const ManageDonors = () => {
                         <button className="btn btn-sm btn-primary" onClick={() => updateStatus(donor._id, 'approved')} style={{ marginRight: '0.5rem' }}>Approve</button>
                       )}
                       {donor.status === 'approved' && (
-                        <button className="btn btn-sm btn-danger" onClick={() => updateStatus(donor._id, 'suspended')}>Suspend</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => updateStatus(donor._id, 'suspended')} style={{ marginRight: '0.5rem' }}>Suspend</button>
                       )}
+                      <button className="btn btn-sm btn-outline" onClick={() => handleDelete(donor._id)} style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>Delete</button>
                     </td>
                   </tr>
                 ))

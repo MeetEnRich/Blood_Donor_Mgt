@@ -17,6 +17,15 @@ const register = async (req, res) => {
       return res.status(400).json({ message: 'Email already registered' });
     }
 
+    // Construct coordinates if they are flat in the body
+    let coordinates = profileData.coordinates || null;
+    if (!coordinates && profileData.latitude && profileData.longitude) {
+      coordinates = {
+        latitude: parseFloat(profileData.latitude),
+        longitude: parseFloat(profileData.longitude)
+      };
+    }
+
     // Create user with pending status
     const user = await User.create({
       email,
@@ -38,7 +47,7 @@ const register = async (req, res) => {
         address: profileData.address,
         state: profileData.state,
         lga: profileData.lga,
-        coordinates: profileData.coordinates,
+        coordinates,
         medicalHistory: profileData.medicalHistory
       });
     } else if (role === 'hospital') {
@@ -51,7 +60,7 @@ const register = async (req, res) => {
         lga: profileData.lga,
         phone: profileData.phone,
         contactPersonName: profileData.contactPersonName,
-        coordinates: profileData.coordinates
+        coordinates
       });
     }
 

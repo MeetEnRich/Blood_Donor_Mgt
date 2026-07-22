@@ -42,6 +42,7 @@ const getAllDonors = async (req, res) => {
     const mappedDonors = donors.map(d => {
       const plain = d.toObject();
       plain.userId = plain.user; // alias user as userId
+      plain.status = plain.user?.status || 'pending';
       return plain;
     });
 
@@ -390,6 +391,26 @@ const respondToAlert = async (req, res) => {
   }
 };
 
+/**
+ * Delete a donor account (Admin only).
+ */
+const deleteDonor = async (req, res) => {
+  try {
+    const donor = await Donor.findByPk(req.params.id);
+    if (!donor) {
+      return res.status(404).json({ message: 'Donor not found' });
+    }
+
+    // Delete parent User (cascades to Donor)
+    await User.destroy({ where: { _id: donor.userId } });
+
+    res.json({ message: 'Donor account deleted successfully' });
+  } catch (error) {
+    console.error('Delete donor error:', error);
+    res.status(500).json({ message: 'Failed to delete donor', error: error.message });
+  }
+};
+
 module.exports = {
   getAllDonors,
   getMyProfile,
@@ -401,5 +422,6 @@ module.exports = {
   recordDonation,
   checkEligibility,
   getMyAlerts,
-  respondToAlert
+  respondToAlert,
+  deleteDonor
 };
